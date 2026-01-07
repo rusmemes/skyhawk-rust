@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Deserialize, Clone, Serialize)]
+#[derive(Deserialize, Clone, Serialize, Debug)]
 pub struct Log {
     pub season: String,
     pub team: String,
@@ -13,6 +13,7 @@ pub struct Log {
     pub blocks: Option<i16>,
     pub fouls: Option<i16>,
     pub turnovers: Option<i16>,
+    #[serde(alias = "minutesPlayed")]
     pub minutes_played: Option<f32>,
 }
 
@@ -30,8 +31,14 @@ impl TimeKey {
     }
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Debug)]
 pub struct CacheRecord {
     pub time_key: TimeKey,
     pub log: Log,
+}
+
+impl CacheRecord {
+    pub fn new(log: Log) -> Self {
+        Self { time_key: TimeKey::new(), log }
+    }
 }

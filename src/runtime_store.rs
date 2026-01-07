@@ -13,7 +13,6 @@ type PlayerMap = DashMap<Player, Arc<TimeMap>>;
 type TeamMap = DashMap<Team, Arc<PlayerMap>>;
 type Cache = DashMap<Season, Arc<TeamMap>>;
 
-#[derive(Clone)]
 pub struct RuntimeStore {
     cache: Cache,
 }
@@ -91,5 +90,33 @@ impl RuntimeStore {
         }
 
         res
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::protocol::{CacheRecord, Log};
+    use crate::runtime_store::RuntimeStore;
+
+    #[test]
+    fn test() {
+        let store = RuntimeStore::new();
+        store.log(CacheRecord::new(Log {
+            season: "season".to_string(),
+            team: "team".to_string(),
+            player: "player".to_string(),
+            steals: Some(1),
+            points: None,
+            rebounds: None,
+            assists: None,
+            blocks: None,
+            fouls: None,
+            turnovers: None,
+            minutes_played: None,
+        }));
+
+        let vec = store.copy("season");
+        println!("{:?}", vec);
+        assert_eq!(vec.len(), 1);
     }
 }
