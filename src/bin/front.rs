@@ -1,10 +1,18 @@
-use axum::routing::{Router, get};
+use axum::routing::{get, Router};
+use sqlx::PgPool;
+use tiny_kafka::KafkaProducer;
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
     dotenv::dotenv().ok();
+
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let pool = PgPool::connect(&database_url).await.expect("Error connecting to database");
+
+    let kafka_bootstrap_servers = std::env::var("KAFKA_BOOTSTRAP_SERVERS").expect("KAFKA_BOOTSTRAP_SERVERS must be set");
+    let producer = KafkaProducer::new(kafka_bootstrap_servers).await.expect("Error creating Kafka producer");
 
     let app = Router::new()
         .route("/", get(root));
