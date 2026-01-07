@@ -1,0 +1,13 @@
+[package]
+name = "skyhawk-rust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8.8"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.22"
+tokio = {version = "1.49.0", features = ["full"]}
+serde = { version = "1.0.228", features = ["derive"] }
+dotenv = "0.15.0"
+sqlx = {version = "0.8.6", features = ["runtime-tokio-rustls", "json", "postgres", "macros"]}

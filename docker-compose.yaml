@@ -1,0 +1,104 @@
+name: skyhawk
+services:
+#  postgres:
+#    container_name: postgres
+#    image: postgres:15.3-alpine
+#    environment:
+#      POSTGRES_DB: skyhawk
+#      POSTGRES_USER: postgres
+#      POSTGRES_PASSWORD: test123
+#    ports:
+#      - "5432:5432"
+#    volumes:
+#      - "pg-data:/var/lib/postgresql/data"
+#    networks:
+#      - skyhawk
+#
+#  zookeeper:
+#    container_name: zookeeper
+#    image: confluentinc/cp-zookeeper:7.4.3
+#    environment:
+#      ZOOKEEPER_CLIENT_PORT: 2181
+#      ZOOKEEPER_TICK_TIME: 2000
+#    ports:
+#      - "22181:2181"
+#    networks:
+#      - skyhawk
+#
+#  kafka:
+#    container_name: kafka
+#    image: confluentinc/cp-kafka:7.4.3
+#    depends_on:
+#      - zookeeper
+#    ports:
+#      - "29092:29092"
+#    environment:
+#      KAFKA_BROKER_ID: 1
+#      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+#      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+#      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+#      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+#      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+#    networks:
+#      - skyhawk
+
+#  back:
+#    ports:
+#      - "8080"
+#    build:
+#      context: .
+#      dockerfile: back/Dockerfile
+#    deploy:
+#      mode: replicated
+#      replicas: 2
+#    restart: always
+#    depends_on:
+#      - postgres
+#      - kafka
+#    networks:
+#      - skyhawk
+
+  lb:
+    container_name: lb
+    build: lb
+    restart: unless-stopped
+    networks:
+      - skyhawk
+    ports:
+      - "8080:8080"
+
+  front:
+    ports:
+      - "8080"
+    environment:
+      DATABASE_URL: postgres://postgres:test123@postgres:5432/skyhawk
+      KAFKA_TOPIC_MAIN: main
+      KAFKA_TOPIC_REMOVAL: removal
+      KAFKA_GROUP_ID: random
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SERVICE_DISCOVERY_SELF_URL: docker.host
+      SERVICE_DISCOVERY_HEARTBEAT_ENABLED: true
+    build:
+      context: .
+      dockerfile: front/Dockerfile
+    image: front
+    deploy:
+      mode: replicated
+      replicas: 3
+    restart: always
+    depends_on:
+#      - postgres
+#      - kafka
+#      - back
+      - lb
+    networks:
+      skyhawk:
+        aliases:
+          - front
+
+volumes:
+  pg-data:
+
+networks:
+  skyhawk:
+    driver: bridge
