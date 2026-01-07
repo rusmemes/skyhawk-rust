@@ -1,6 +1,13 @@
 use axum::routing::{get, Router};
 use sqlx::PgPool;
+use std::sync::Arc;
 use tiny_kafka::KafkaProducer;
+
+#[derive(Clone)]
+struct FrontState {
+    pool: PgPool,
+    producer: Arc<KafkaProducer>,
+}
 
 #[tokio::main]
 async fn main() {
@@ -12,10 +19,11 @@ async fn main() {
     let pool = PgPool::connect(&database_url).await.expect("Error connecting to database");
 
     let kafka_bootstrap_servers = std::env::var("KAFKA_BOOTSTRAP_SERVERS").expect("KAFKA_BOOTSTRAP_SERVERS must be set");
-    let producer = KafkaProducer::new(kafka_bootstrap_servers).await.expect("Error creating Kafka producer");
+    let producer = Arc::new(KafkaProducer::new(kafka_bootstrap_servers).await.expect("Error creating Kafka producer"));
 
     let app = Router::new()
-        .route("/", get(root));
+        .route("/", get(root))
+        .with_state(FrontState { pool, producer });
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
     tracing::info!("Listening on http://0.0.0.0:8080");
