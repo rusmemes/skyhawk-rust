@@ -1,4 +1,5 @@
 use axum::routing::{get, Router};
+use skyhawk_rust::runtime_store::RuntimeStore;
 use sqlx::PgPool;
 use std::sync::Arc;
 use tiny_kafka::KafkaProducer;
@@ -7,6 +8,7 @@ use tiny_kafka::KafkaProducer;
 struct FrontState {
     pool: PgPool,
     producer: Arc<KafkaProducer>,
+    runtime_store: RuntimeStore,
 }
 
 #[tokio::main]
@@ -28,9 +30,11 @@ async fn main() {
             .expect("Error creating Kafka producer"),
     );
 
-    let app = Router::new()
-        .route("/", get(root))
-        .with_state(FrontState { pool, producer });
+    let app = Router::new().route("/", get(root)).with_state(FrontState {
+        pool,
+        producer,
+        runtime_store: RuntimeStore::new(),
+    });
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
     tracing::info!("Listening on http://0.0.0.0:8080");
