@@ -17,15 +17,12 @@ pub struct Log {
     pub minutes_played: Option<f32>,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct TimeKey(i64, i64);
 
 impl TimeKey {
     fn new() -> Self {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
 
         Self(now.as_millis() as i64, now.as_nanos() as i64)
     }
@@ -39,6 +36,9 @@ pub struct CacheRecord {
 
 impl CacheRecord {
     pub fn new(log: Log) -> Self {
-        Self { time_key: TimeKey::new(), log }
+        Self {
+            time_key: TimeKey::new(),
+            log,
+        }
     }
 }

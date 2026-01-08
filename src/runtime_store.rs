@@ -25,7 +25,6 @@ impl RuntimeStore {
     }
 
     pub fn log(&self, record: CacheRecord) {
-        
         let log = &record.log;
 
         let team_map = self
@@ -48,7 +47,6 @@ impl RuntimeStore {
     }
 
     pub fn remove(&self, record: &CacheRecord) {
-
         let log = &record.log;
 
         let Some(team_map) = self.cache.get(&log.season) else {
@@ -74,7 +72,6 @@ impl RuntimeStore {
     }
 
     pub fn copy(&self, season: &str) -> Vec<CacheRecord> {
-        
         let Some(team_map) = self.cache.get(season) else {
             return Vec::new();
         };

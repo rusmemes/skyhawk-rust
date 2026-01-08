@@ -45,13 +45,15 @@ pub async fn log(
         }
         Err((e, _)) => {
             tracing::debug!(%e, "Failed to deliver record");
-            Err((StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error".to_string()))
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal Server Error".to_string(),
+            ))
         }
     }
 }
 
 impl Log {
-
     fn kafka_key(&self) -> String {
         format!("log-{}-{}-{}", self.season, self.team, self.player)
     }
