@@ -1,9 +1,18 @@
 use crate::Config;
-use sqlx::{PgPool, Pool, Postgres};
+use sqlx::{Executor, PgPool, Pool, Postgres};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
+
+const DDL: &str = r#"
+    create table if not exists service_discovery
+    (
+      url                 text      not null,
+      last_heartbeat_time timestamp not null
+    );
+    create unique index if not exists service_discovery_url_unique_idx ON service_discovery (url);
+"#;
 
 pub async fn service_discovery(token: CancellationToken, config: Arc<Config>) {
     tracing::info!("Service discovery worker started");
@@ -12,6 +21,8 @@ pub async fn service_discovery(token: CancellationToken, config: Arc<Config>) {
         .await
         .expect("Error connecting to database");
 
+    run_ddl(&pool).await;
+
     loop {
         tokio::select! {
             _ = token.cancelled() => {
@@ -19,12 +30,18 @@ pub async fn service_discovery(token: CancellationToken, config: Arc<Config>) {
                 break;
             }
             _ = sleep(Duration::from_secs(1)) => {
-                iteration(&pool).await;
+                sync(&pool, config.clone()).await;
             }
         }
     }
 }
 
-async fn iteration(_pool: &Pool<Postgres>) {
+async fn run_ddl(pool: &Pool<Postgres>) {
+    pool.execute(DDL)
+        .await
+        .expect("Error executing database table for service discovery");
+}
+
+async fn sync(_pool: &Pool<Postgres>, config: Arc<Config>) {
     todo!()
 }

@@ -1,8 +1,9 @@
 use crate::protocol::{CacheRecord, Log};
-use crate::FrontState;
+use crate::{FrontState, HEADER_SENDER};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
+use rdkafka::message::{Header, OwnedHeaders};
 use rdkafka::producer::FutureRecord;
 use std::time::Duration;
 
@@ -29,11 +30,19 @@ pub async fn log(
     let record = CacheRecord::new(log);
 
     let json = serde_json::to_string(&record).unwrap();
+
+    let headers = OwnedHeaders::new()
+        .insert(Header {
+            key: HEADER_SENDER,
+            value: Some(&config.instance_id),
+        });
+
     let delivery = producer
         .send(
             FutureRecord::to(&config.kafka_topic_main)
                 .key(&record.log.kafka_key())
-                .payload(&json),
+                .payload(&json)
+                .headers(headers),
             Duration::from_secs(5),
         )
         .await;
