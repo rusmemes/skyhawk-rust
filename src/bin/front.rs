@@ -1,4 +1,5 @@
 use axum::routing::{post, Router};
+use futures::future::select_all;
 use skyhawk_rust::handlers::copy::copy;
 use skyhawk_rust::handlers::log::log;
 use skyhawk_rust::kafka_removal_reading::kafka_removal_reading;
@@ -46,14 +47,14 @@ async fn main() {
 }
 
 async fn shutdown_signal(token: CancellationToken) {
-    let mut sigterm = signal(SignalKind::terminate()).expect("SIGTERM handler");
 
+    let mut sigterm = signal(SignalKind::terminate()).expect("SIGTERM handler");
     let mut sigint = signal(SignalKind::interrupt()).expect("SIGINT handler");
 
     tokio::select! {
         _ = sigterm.recv() => tracing::info!("SIGTERM received"),
         _ = sigint.recv() => tracing::info!("SIGINT received"),
-        _ = token.cancelled() => {}, // shutdown по panic
+        _ = token.cancelled() => {}, // shutdown caused by a panic
     }
 
     token.cancel();
@@ -77,8 +78,11 @@ async fn spawn_background_tasks(
         runtime_store,
     )));
 
-    for handle in handles {
-        match handle.await {
+    while !handles.is_empty() {
+        let (res, _idx, remaining) = select_all(handles).await;
+        handles = remaining;
+
+        match res {
             Ok(_) => {}
             Err(e) if e.is_panic() => {
                 tracing::error!("Background task panicked: {e}");

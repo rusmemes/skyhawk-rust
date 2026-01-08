@@ -18,3 +18,4 @@ time = { version = "0.3.44", features = ["macros"] }
 dashmap = "6.1.0"
 crossbeam-skiplist = "0.1"
 uuid = { version = "1.19.0", features = ["v4"] }
+futures = "0.3.31"
