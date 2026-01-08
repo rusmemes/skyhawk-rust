@@ -1,11 +1,10 @@
-use crate::docker_host_util::get_docker_host;
 use crate::runtime_store::RuntimeStore;
 use rdkafka::producer::FutureProducer;
 use rdkafka::ClientConfig;
+use std::env;
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub mod docker_host_util;
 pub mod handlers;
 pub mod kafka_removal_reading;
 pub mod protocol;
@@ -51,27 +50,30 @@ pub struct Config {
 impl Config {
     pub fn new() -> Self {
         Self {
-            kafka_topic_main: std::env::var("KAFKA_TOPIC_MAIN")
-                .expect("KAFKA_TOPIC_MAIN must be set"),
-            kafka_topic_removal: std::env::var("KAFKA_TOPIC_REMOVAL")
+            kafka_topic_main: env::var("KAFKA_TOPIC_MAIN").expect("KAFKA_TOPIC_MAIN must be set"),
+            kafka_topic_removal: env::var("KAFKA_TOPIC_REMOVAL")
                 .expect("KAFKA_TOPIC_REMOVAL must be set"),
-            kafka_group_id: std::env::var("KAFKA_GROUP_ID").expect("KAFKA_GROUP_ID must be set"),
-            kafka_bootstrap_servers: std::env::var("KAFKA_BOOTSTRAP_SERVERS")
+            kafka_group_id: env::var("KAFKA_GROUP_ID").expect("KAFKA_GROUP_ID must be set"),
+            kafka_bootstrap_servers: env::var("KAFKA_BOOTSTRAP_SERVERS")
                 .expect("KAFKA_BOOTSTRAP_SERVERS must be set"),
             instance_id: Uuid::new_v4().to_string(),
-            database_url: std::env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
+            database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
             service_discovery_self_url: get_service_discovery_url(),
         }
     }
 }
 
 fn get_service_discovery_url() -> Option<String> {
-    let url = std::env::var("SERVICE_DISCOVERY_SELF_URL")
+
+    let url = env::var("SERVICE_DISCOVERY_SELF_URL")
         .map(Some)
         .unwrap_or(None)?;
 
     Some(if url == "docker.host" {
-        get_docker_host()
+        let docker_host = env::var("HOSTNAME")
+            .expect("HOSTNAME must be set")
+            .to_string();
+        format!("http://{}:8080", docker_host)
     } else {
         url
     })

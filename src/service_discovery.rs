@@ -2,6 +2,7 @@ use crate::Config;
 use sqlx::{Executor, PgPool, Pool, Postgres};
 use std::sync::Arc;
 use std::time::Duration;
+use time::OffsetDateTime;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
@@ -17,6 +18,11 @@ const DDL: &str = r#"
 pub async fn service_discovery(token: CancellationToken, config: Arc<Config>) {
     tracing::info!("Service discovery worker started");
 
+    let self_url = config
+        .service_discovery_self_url
+        .as_ref()
+        .expect("No self url provided");
+
     let pool = PgPool::connect(&config.database_url)
         .await
         .expect("Error connecting to database");
@@ -30,7 +36,7 @@ pub async fn service_discovery(token: CancellationToken, config: Arc<Config>) {
                 break;
             }
             _ = sleep(Duration::from_secs(1)) => {
-                sync(&pool, config.clone()).await;
+                sync(&pool, self_url).await;
             }
         }
     }
@@ -42,6 +48,25 @@ async fn run_ddl(pool: &Pool<Postgres>) {
         .expect("Error executing database table for service discovery");
 }
 
-async fn sync(_pool: &Pool<Postgres>, config: Arc<Config>) {
+async fn sync(pool: &Pool<Postgres>, self_url: &str) {
+    heartbeat(pool, self_url).await;
     todo!()
+}
+
+async fn heartbeat(pool: &PgPool, self_url: &str) {
+    let now = OffsetDateTime::now_utc();
+
+    sqlx::query(
+        r#"
+        INSERT INTO service_discovery (url, last_heartbeat_time)
+        VALUES ($1, $2)
+        ON CONFLICT (url) DO UPDATE
+          SET last_heartbeat_time = EXCLUDED.last_heartbeat_time
+        "#,
+    )
+    .bind(self_url)
+    .bind(now)
+    .execute(pool)
+    .await
+    .expect("Error executing database table for service discovery");
 }
