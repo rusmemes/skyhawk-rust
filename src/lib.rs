@@ -1,5 +1,6 @@
 use crate::runtime_store::RuntimeStore;
 use rdkafka::producer::FutureProducer;
+use rdkafka::ClientConfig;
 use std::sync::Arc;
 
 pub mod protocol;
@@ -11,6 +12,26 @@ pub struct FrontState {
     pub producer: FutureProducer,
     pub config: Arc<Config>,
     pub runtime_store: Arc<RuntimeStore>,
+}
+
+impl FrontState {
+    pub fn new() -> Self {
+        let config = Arc::new(Config::new());
+
+        let kafka_bootstrap_servers =
+            std::env::var("KAFKA_BOOTSTRAP_SERVERS").expect("KAFKA_BOOTSTRAP_SERVERS must be set");
+
+        let producer: FutureProducer = ClientConfig::new()
+            .set("bootstrap.servers", kafka_bootstrap_servers)
+            .create()
+            .expect("Kafka producer creation error");
+
+        FrontState {
+            producer,
+            config,
+            runtime_store: Arc::new(RuntimeStore::new()),
+        }
+    }
 }
 
 pub struct Config {
