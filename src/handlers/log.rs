@@ -40,7 +40,6 @@ pub async fn log(
 
     match delivery {
         Ok(_) => {
-            tracing::info!("{:?}", runtime_store.copy(&record.log.season));
             runtime_store.log(record);
             Ok(StatusCode::ACCEPTED)
         }
