@@ -82,7 +82,7 @@ fn cache_record(runtime_store: Arc<RuntimeStore>, payload: Option<&[u8]>) {
         let record: CacheRecord =
             serde_json::from_slice(&payload).expect("Failed to parse kafka payload");
 
-        runtime_store.log(record)
+        runtime_store.log(record);
     }
 }
 

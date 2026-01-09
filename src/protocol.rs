@@ -26,7 +26,7 @@ pub struct Log {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct TimeKey(i64, i64);
+pub struct TimeKey(pub i64, pub i64);
 
 impl TimeKey {
     fn new() -> Self {

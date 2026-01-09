@@ -42,21 +42,27 @@ services:
     networks:
       - skyhawk
 
-#  back:
-#    ports:
-#      - "8080"
-#    build:
-#      context: .
-#      dockerfile: back/Dockerfile
-#    deploy:
-#      mode: replicated
-#      replicas: 2
-#    restart: always
-#    depends_on:
-#      - postgres
-#      - kafka
-#    networks:
-#      - skyhawk
+  back:
+    ports:
+      - "8080"
+    environment:
+      DATABASE_URL: postgres://postgres:test123@postgres:5432/skyhawk
+      KAFKA_TOPIC_MAIN: main
+      KAFKA_TOPIC_REMOVAL: removal
+      KAFKA_GROUP_ID: back
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    build:
+      context: .
+      dockerfile: back/Dockerfile
+    deploy:
+      mode: replicated
+      replicas: 2
+    restart: always
+    depends_on:
+      - postgres
+      - kafka
+    networks:
+      - skyhawk
 
   lb:
     container_name: lb
@@ -80,7 +86,6 @@ services:
     build:
       context: .
       dockerfile: front/Dockerfile
-    image: front
     deploy:
       mode: replicated
       replicas: 3
@@ -88,7 +93,7 @@ services:
     depends_on:
       - postgres
       - kafka
-#      - back
+      - back
       - lb
     networks:
       skyhawk:

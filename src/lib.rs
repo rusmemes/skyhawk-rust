@@ -12,6 +12,7 @@ pub mod kafka_removal_reading;
 pub mod protocol;
 pub mod runtime_store;
 pub mod service_discovery;
+pub mod utils;
 
 pub const HEADER_SENDER: &str = "sender";
 

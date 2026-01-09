@@ -1,5 +1,5 @@
 use crate::{Config, ServiceList};
-use sqlx::{Executor, PgPool, Pool, Postgres, Row};
+use sqlx::{Executor, PgPool, Row};
 use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
@@ -47,9 +47,11 @@ pub async fn service_discovery(
     }
 }
 
-async fn remove_expired_records(pool: &Pool<Postgres>, self_url: &str) {
-    let cutoff_time = OffsetDateTime::now_utc() - Duration::from_secs(5);
-    sqlx::query("DELETE FROM service_discovery WHERE url == $1 OR last_heartbeat_time < $2")
+async fn remove_expired_records(pool: &PgPool, self_url: &str) {
+    const DURATION: Duration = Duration::from_secs(5);
+
+    let cutoff_time = OffsetDateTime::now_utc() - DURATION;
+    sqlx::query("DELETE FROM service_discovery WHERE url = $1 OR last_heartbeat_time < $2")
         .bind(self_url)
         .bind(cutoff_time)
         .execute(pool)
@@ -57,13 +59,13 @@ async fn remove_expired_records(pool: &Pool<Postgres>, self_url: &str) {
         .expect("Error executing database table for service discovery");
 }
 
-async fn run_ddl(pool: &Pool<Postgres>) {
+async fn run_ddl(pool: &PgPool) {
     pool.execute(DDL)
         .await
         .expect("Error executing database table for service discovery");
 }
 
-async fn sync(pool: &Pool<Postgres>, self_url: &str, service_list: Arc<ServiceList>) {
+async fn sync(pool: &PgPool, self_url: &str, service_list: Arc<ServiceList>) {
     heartbeat(pool, self_url).await;
     let urls = get_active_urls(pool, self_url).await;
     work_on_state(urls, service_list).await;
@@ -87,8 +89,10 @@ async fn heartbeat(pool: &PgPool, self_url: &str) {
     .expect("Error executing database table for service discovery");
 }
 
-async fn get_active_urls(pool: &Pool<Postgres>, self_url: &str) -> Vec<String> {
-    let cutoff_time = OffsetDateTime::now_utc() - Duration::from_secs(5);
+async fn get_active_urls(pool: &PgPool, self_url: &str) -> Vec<String> {
+
+    const DURATION: Duration = Duration::from_secs(5);
+    let cutoff_time = OffsetDateTime::now_utc() - DURATION;
 
     let rows = sqlx::query(
         r#"
