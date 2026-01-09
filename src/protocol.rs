@@ -50,3 +50,29 @@ impl CacheRecord {
         }
     }
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StatPer {
+    Team, Player
+}
+
+#[derive(Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum StatValue {
+    Points,
+    Rebounds,
+    Assists,
+    Steals,
+    Blocks,
+    Fouls,
+    Turnovers,
+    MinutesPlayed,
+}
+
+#[derive(Deserialize)]
+pub struct StatRequest {
+    pub season: String,
+    pub per: StatPer,
+    pub values: Vec<StatValue>,
+}

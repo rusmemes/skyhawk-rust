@@ -1,12 +1,13 @@
 use axum::routing::{post, Router};
 use skyhawk_rust::handlers::copy::copy;
 use skyhawk_rust::handlers::log::log;
+use skyhawk_rust::handlers::stat::stat;
 use skyhawk_rust::kafka_removal_reading::kafka_removal_reading;
 use skyhawk_rust::runtime_store::RuntimeStore;
 use skyhawk_rust::service_discovery::service_discovery;
 use skyhawk_rust::utils::{join_tasks, shutdown_signal};
 use skyhawk_rust::{Config, FrontState, ServiceList};
-use std::sync::Arc;
+use sqlx::PgPool;
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
@@ -17,17 +18,26 @@ async fn main() {
     dotenv::dotenv().ok();
 
     let shutdown = CancellationToken::new();
-    let front_state = FrontState::new();
+
+    let config = Config::new();
+
+    let pool = PgPool::connect(&config.database_url)
+        .await
+        .expect("Error connecting to database");
+
+    let front_state = FrontState::new(pool.clone(), config.clone());
 
     let supervisor = tokio::spawn(spawn_background_tasks(
         shutdown.clone(),
         front_state.runtime_store.clone(),
         front_state.config.clone(),
         front_state.service_list.clone(),
+        pool
     ));
 
     let app = Router::new()
         .route("/log", post(log))
+        .route("/stat", post(stat))
         .route("/stat-copy", post(copy))
         .with_state(front_state);
 
@@ -45,16 +55,18 @@ async fn main() {
 
 async fn spawn_background_tasks(
     token: CancellationToken,
-    runtime_store: Arc<RuntimeStore>,
-    config: Arc<Config>,
-    service_list: Arc<ServiceList>,
+    runtime_store: RuntimeStore,
+    config: Config,
+    service_list: ServiceList,
+    pool: PgPool,
 ) {
     let mut handles = Vec::new();
 
     handles.push(tokio::spawn(service_discovery(
         token.child_token(),
         config.clone(),
-        service_list
+        service_list,
+        pool
     )));
 
     handles.push(tokio::spawn(kafka_removal_reading(

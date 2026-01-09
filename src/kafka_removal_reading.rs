@@ -11,15 +11,15 @@ use tokio_util::sync::CancellationToken;
 
 pub async fn kafka_removal_reading(
     token: CancellationToken,
-    config: Arc<Config>,
-    runtime_store: Arc<RuntimeStore>,
+    config: Config,
+    runtime_store: RuntimeStore,
 ) {
     tracing::info!("Kafka removal reading worker started");
 
     let consumer: Arc<StreamConsumer> = Arc::new(
         ClientConfig::new()
-            .set("bootstrap.servers", &config.kafka_bootstrap_servers)
-            .set("group.id", &config.kafka_group_id)
+            .set("bootstrap.servers", config.kafka_bootstrap_servers.as_str())
+            .set("group.id", config.kafka_group_id.as_str())
             .set("auto.offset.reset", "latest")
             .set("enable.auto.commit", "true")
             .create()
@@ -47,14 +47,14 @@ pub async fn kafka_removal_reading(
 
 async fn iteration(
     consumer: Arc<StreamConsumer>,
-    runtime_store: Arc<RuntimeStore>,
-    config: Arc<Config>,
+    runtime_store: RuntimeStore,
+    config: Config,
 ) {
     loop {
         match consumer.recv().await {
             Err(e) => tracing::error!("Kafka error: {}", e),
             Ok(msg) => {
-                if msg.topic() == &config.kafka_topic_main {
+                if msg.topic() == config.kafka_topic_main.as_str() {
                     if let Some(headers) = msg.headers() {
                         if let Some(bytes) = headers
                             .iter()
@@ -64,12 +64,12 @@ async fn iteration(
                             let header_value = std::str::from_utf8(bytes)
                                 .expect("Failed to parse kafka sender header value");
 
-                            if header_value != &config.instance_id {
+                            if header_value != config.instance_id.as_str() {
                                 cache_record(runtime_store.clone(), msg.payload());
                             }
                         }
                     }
-                } else if msg.topic() == &config.kafka_topic_removal {
+                } else if msg.topic() == config.kafka_topic_removal.as_str() {
                     clear_runtime_store(runtime_store.clone(), msg.payload());
                 }
             }
@@ -77,7 +77,7 @@ async fn iteration(
     }
 }
 
-fn cache_record(runtime_store: Arc<RuntimeStore>, payload: Option<&[u8]>) {
+fn cache_record(runtime_store: RuntimeStore, payload: Option<&[u8]>) {
     if let Some(payload) = payload {
         let record: CacheRecord =
             serde_json::from_slice(&payload).expect("Failed to parse kafka payload");
@@ -86,7 +86,7 @@ fn cache_record(runtime_store: Arc<RuntimeStore>, payload: Option<&[u8]>) {
     }
 }
 
-fn clear_runtime_store(runtime_store: Arc<RuntimeStore>, payload: Option<&[u8]>) {
+fn clear_runtime_store(runtime_store: RuntimeStore, payload: Option<&[u8]>) {
     if let Some(payload) = payload {
         let record: CacheRecord =
             serde_json::from_slice(&payload).expect("Failed to parse kafka payload");

@@ -71,14 +71,14 @@ async fn run_kafka_worker(token: CancellationToken) {
     run_ddl(&pool).await;
 
     let producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", &config.kafka_bootstrap_servers)
+        .set("bootstrap.servers", config.kafka_bootstrap_servers.as_str())
         .create()
         .expect("Kafka producer creation error");
 
     let consumer: Arc<StreamConsumer> = Arc::new(
         ClientConfig::new()
-            .set("bootstrap.servers", &config.kafka_bootstrap_servers)
-            .set("group.id", &config.kafka_group_id)
+            .set("bootstrap.servers", config.kafka_bootstrap_servers.as_str())
+            .set("group.id", config.kafka_group_id.as_str())
             .set("auto.offset.reset", "earliest")
             .set("enable.auto.commit", "false")
             .create()
@@ -222,7 +222,7 @@ async fn insert(records: &Vec<CacheRecord>, pool: &PgPool) {
     tx.commit().await.expect("Error committing batch");
 }
 
-async fn collect_batch(consumer: &StreamConsumer) -> Vec<BorrowedMessage> {
+async fn collect_batch(consumer: &StreamConsumer) -> Vec<BorrowedMessage<'_>> {
     const MAX_BATCH_SIZE: usize = 500;
     const MAX_WAIT: Duration = Duration::from_millis(10);
 

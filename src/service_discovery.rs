@@ -1,6 +1,5 @@
 use crate::{Config, ServiceList};
 use sqlx::{Executor, PgPool, Row};
-use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::time::sleep;
@@ -17,19 +16,16 @@ const DDL: &str = r#"
 
 pub async fn service_discovery(
     token: CancellationToken,
-    config: Arc<Config>,
-    service_list: Arc<ServiceList>,
+    config: Config,
+    service_list: ServiceList,
+    pool: PgPool,
 ) {
     tracing::info!("Service discovery worker started");
 
     let self_url = config
         .service_discovery_self_url
-        .as_ref()
+        .as_deref()
         .expect("No self url provided");
-
-    let pool = PgPool::connect(&config.database_url)
-        .await
-        .expect("Error connecting to database");
 
     run_ddl(&pool).await;
 
@@ -65,7 +61,7 @@ async fn run_ddl(pool: &PgPool) {
         .expect("Error executing database table for service discovery");
 }
 
-async fn sync(pool: &PgPool, self_url: &str, service_list: Arc<ServiceList>) {
+async fn sync(pool: &PgPool, self_url: &str, service_list: ServiceList) {
     heartbeat(pool, self_url).await;
     let urls = get_active_urls(pool, self_url).await;
     work_on_state(urls, service_list).await;
@@ -114,7 +110,7 @@ async fn get_active_urls(pool: &PgPool, self_url: &str) -> Vec<String> {
         .expect("Error getting state from database")
 }
 
-async fn work_on_state(state: Vec<String>, service_list: Arc<ServiceList>) {
+async fn work_on_state(state: Vec<String>, service_list: ServiceList) {
     let mut list = service_list.list.write().await;
     *list = state;
 }
