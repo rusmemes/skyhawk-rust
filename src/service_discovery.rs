@@ -1,5 +1,5 @@
-use crate::Config;
-use sqlx::{Executor, PgPool, Pool, Postgres};
+use crate::{Config, ServiceList};
+use sqlx::{Executor, PgPool, Pool, Postgres, Row};
 use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
@@ -15,7 +15,11 @@ const DDL: &str = r#"
     create unique index if not exists service_discovery_url_unique_idx ON service_discovery (url);
 "#;
 
-pub async fn service_discovery(token: CancellationToken, config: Arc<Config>) {
+pub async fn service_discovery(
+    token: CancellationToken,
+    config: Arc<Config>,
+    service_list: Arc<ServiceList>,
+) {
     tracing::info!("Service discovery worker started");
 
     let self_url = config
@@ -36,7 +40,7 @@ pub async fn service_discovery(token: CancellationToken, config: Arc<Config>) {
                 break;
             }
             _ = sleep(Duration::from_secs(1)) => {
-                sync(&pool, self_url).await;
+                sync(&pool, self_url, service_list.clone()).await;
             }
         }
     }
@@ -48,9 +52,10 @@ async fn run_ddl(pool: &Pool<Postgres>) {
         .expect("Error executing database table for service discovery");
 }
 
-async fn sync(pool: &Pool<Postgres>, self_url: &str) {
+async fn sync(pool: &Pool<Postgres>, self_url: &str, service_list: Arc<ServiceList>) {
     heartbeat(pool, self_url).await;
-    todo!()
+    let urls = get_active_urls(pool, self_url).await;
+    work_on_state(urls, service_list).await;
 }
 
 async fn heartbeat(pool: &PgPool, self_url: &str) {
@@ -69,4 +74,33 @@ async fn heartbeat(pool: &PgPool, self_url: &str) {
     .execute(pool)
     .await
     .expect("Error executing database table for service discovery");
+}
+
+async fn get_active_urls(pool: &Pool<Postgres>, self_url: &str) -> Vec<String> {
+
+    let cutoff_time = OffsetDateTime::now_utc() - Duration::from_secs(5);
+
+    let rows = sqlx::query(
+        r#"
+                SELECT url
+                FROM service_discovery
+                WHERE url != $1
+                  AND last_heartbeat_time > $2
+                "#,
+    )
+    .bind(self_url)
+    .bind(cutoff_time)
+    .fetch_all(pool)
+    .await
+    .expect("Error executing database table for service discovery");
+
+    rows.into_iter()
+        .map(|row| row.try_get("url"))
+        .collect::<Result<_, _>>()
+        .expect("Error getting state from database")
+}
+
+async fn work_on_state(state: Vec<String>, service_list: Arc<ServiceList>) {
+    let mut list = service_list.list.write().await;
+    *list = state;
 }

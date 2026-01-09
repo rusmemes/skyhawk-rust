@@ -1,8 +1,10 @@
 use crate::runtime_store::RuntimeStore;
+use axum::extract::FromRef;
 use rdkafka::producer::FutureProducer;
 use rdkafka::ClientConfig;
 use std::env;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 pub mod handlers;
@@ -13,11 +15,40 @@ pub mod service_discovery;
 
 pub const HEADER_SENDER: &str = "sender";
 
+pub struct ServiceList {
+    pub list: RwLock<Vec<String>>,
+}
+
+impl ServiceList {
+    pub fn new() -> Self {
+        Self {
+            list: RwLock::new(Vec::new()),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct FrontState {
     pub producer: FutureProducer,
     pub config: Arc<Config>,
     pub runtime_store: Arc<RuntimeStore>,
+    pub service_list: Arc<ServiceList>,
+}
+
+impl FromRef<FrontState> for Arc<RuntimeStore> {
+    fn from_ref(input: &FrontState) -> Self {
+        input.runtime_store.clone()
+    }
+}
+
+impl FromRef<FrontState> for (FutureProducer, Arc<Config>, Arc<RuntimeStore>) {
+    fn from_ref(input: &FrontState) -> Self {
+        (
+            input.producer.clone(),
+            input.config.clone(),
+            input.runtime_store.clone(),
+        )
+    }
 }
 
 impl FrontState {
@@ -33,6 +64,7 @@ impl FrontState {
             producer,
             config,
             runtime_store: Arc::new(RuntimeStore::new()),
+            service_list: Arc::new(ServiceList::new()),
         }
     }
 }
@@ -64,7 +96,6 @@ impl Config {
 }
 
 fn get_service_discovery_url() -> Option<String> {
-
     let url = env::var("SERVICE_DISCOVERY_SELF_URL")
         .map(Some)
         .unwrap_or(None)?;

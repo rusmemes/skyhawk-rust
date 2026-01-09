@@ -5,7 +5,7 @@ use skyhawk_rust::handlers::log::log;
 use skyhawk_rust::kafka_removal_reading::kafka_removal_reading;
 use skyhawk_rust::runtime_store::RuntimeStore;
 use skyhawk_rust::service_discovery::service_discovery;
-use skyhawk_rust::{Config, FrontState};
+use skyhawk_rust::{Config, FrontState, ServiceList};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal::unix::{signal, SignalKind};
@@ -20,13 +20,12 @@ async fn main() {
     let shutdown = CancellationToken::new();
 
     let front_state = FrontState::new();
-    let runtime_store = front_state.runtime_store.clone();
-    let config = front_state.config.clone();
 
     let supervisor = tokio::spawn(spawn_background_tasks(
         shutdown.clone(),
-        runtime_store,
-        config,
+        front_state.runtime_store.clone(),
+        front_state.config.clone(),
+        front_state.service_list.clone(),
     ));
 
     let app = Router::new()
@@ -64,12 +63,14 @@ async fn spawn_background_tasks(
     token: CancellationToken,
     runtime_store: Arc<RuntimeStore>,
     config: Arc<Config>,
+    service_list: Arc<ServiceList>,
 ) {
     let mut handles = Vec::new();
 
     handles.push(tokio::spawn(service_discovery(
         token.child_token(),
         config.clone(),
+        service_list
     )));
 
     handles.push(tokio::spawn(kafka_removal_reading(

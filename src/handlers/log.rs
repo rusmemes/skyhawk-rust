@@ -1,18 +1,20 @@
 use crate::protocol::{CacheRecord, Log};
-use crate::{FrontState, HEADER_SENDER};
+use crate::runtime_store::RuntimeStore;
+use crate::{Config, HEADER_SENDER};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use rdkafka::message::{Header, OwnedHeaders};
-use rdkafka::producer::FutureRecord;
+use rdkafka::producer::{FutureProducer, FutureRecord};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub async fn log(
-    State(FrontState {
-        producer,
-        config,
-        runtime_store,
-    }): State<FrontState>,
+    State((producer, config, runtime_store)): State<(
+        FutureProducer,
+        Arc<Config>,
+        Arc<RuntimeStore>,
+    )>,
     Json(log): Json<Log>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let errors = log.validate();
@@ -31,11 +33,10 @@ pub async fn log(
 
     let json = serde_json::to_string(&record).unwrap();
 
-    let headers = OwnedHeaders::new()
-        .insert(Header {
-            key: HEADER_SENDER,
-            value: Some(&config.instance_id),
-        });
+    let headers = OwnedHeaders::new().insert(Header {
+        key: HEADER_SENDER,
+        value: Some(&config.instance_id),
+    });
 
     let delivery = producer
         .send(

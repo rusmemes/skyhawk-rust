@@ -1,15 +1,12 @@
 use crate::protocol::CacheRecord;
-use crate::FrontState;
+use crate::runtime_store::RuntimeStore;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
+use std::sync::Arc;
 
 pub async fn copy(
-    State(FrontState {
-        producer,
-        config,
-        runtime_store,
-    }): State<FrontState>,
+    State(runtime_store): State<Arc<RuntimeStore>>,
     season: String,
 ) -> Result<Json<Vec<CacheRecord>>, StatusCode> {
     let vec: Vec<CacheRecord> = runtime_store.copy(&season);
