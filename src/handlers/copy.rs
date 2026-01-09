@@ -9,7 +9,7 @@ pub async fn copy(
     State(runtime_store): State<Arc<RuntimeStore>>,
     season: String,
 ) -> Result<Json<Vec<CacheRecord>>, StatusCode> {
-    let vec: Vec<CacheRecord> = runtime_store.copy(&season);
+    let vec: Vec<CacheRecord> = runtime_store.copy(&season.to_uppercase());
     if vec.is_empty() {
         Err(StatusCode::NO_CONTENT)
     } else {
