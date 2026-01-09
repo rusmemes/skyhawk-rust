@@ -36,6 +36,7 @@ pub async fn service_discovery(
     loop {
         tokio::select! {
             _ = token.cancelled() => {
+                remove_expired_records(&pool, self_url).await;
                 tracing::info!("Service discovery worker shutting down");
                 break;
             }
@@ -44,6 +45,16 @@ pub async fn service_discovery(
             }
         }
     }
+}
+
+async fn remove_expired_records(pool: &Pool<Postgres>, self_url: &str) {
+    let cutoff_time = OffsetDateTime::now_utc() - Duration::from_secs(5);
+    sqlx::query("DELETE FROM service_discovery WHERE url == $1 OR last_heartbeat_time < $2")
+        .bind(self_url)
+        .bind(cutoff_time)
+        .execute(pool)
+        .await
+        .expect("Error executing database table for service discovery");
 }
 
 async fn run_ddl(pool: &Pool<Postgres>) {
@@ -77,7 +88,6 @@ async fn heartbeat(pool: &PgPool, self_url: &str) {
 }
 
 async fn get_active_urls(pool: &Pool<Postgres>, self_url: &str) -> Vec<String> {
-
     let cutoff_time = OffsetDateTime::now_utc() - Duration::from_secs(5);
 
     let rows = sqlx::query(
