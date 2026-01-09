@@ -85,13 +85,22 @@ impl Config {
             kafka_topic_main: env::var("KAFKA_TOPIC_MAIN").expect("KAFKA_TOPIC_MAIN must be set"),
             kafka_topic_removal: env::var("KAFKA_TOPIC_REMOVAL")
                 .expect("KAFKA_TOPIC_REMOVAL must be set"),
-            kafka_group_id: env::var("KAFKA_GROUP_ID").expect("KAFKA_GROUP_ID must be set"),
+            kafka_group_id: get_kafka_group_id(),
             kafka_bootstrap_servers: env::var("KAFKA_BOOTSTRAP_SERVERS")
                 .expect("KAFKA_BOOTSTRAP_SERVERS must be set"),
             instance_id: Uuid::new_v4().to_string(),
             database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
             service_discovery_self_url: get_service_discovery_url(),
         }
+    }
+}
+
+fn get_kafka_group_id() -> String {
+    let group_id = env::var("KAFKA_GROUP_ID").expect("KAFKA_GROUP_ID must be set");
+    if group_id == "random" {
+        Uuid::new_v4().to_string()
+    } else {
+        group_id
     }
 }
 

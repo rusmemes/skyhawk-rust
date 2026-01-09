@@ -2,7 +2,7 @@ use axum::routing::{post, Router};
 use futures::future::select_all;
 use skyhawk_rust::handlers::copy::copy;
 use skyhawk_rust::handlers::log::log;
-// use skyhawk_rust::kafka_removal_reading::kafka_removal_reading;
+use skyhawk_rust::kafka_removal_reading::kafka_removal_reading;
 use skyhawk_rust::runtime_store::RuntimeStore;
 use skyhawk_rust::service_discovery::service_discovery;
 use skyhawk_rust::{Config, FrontState, ServiceList};
@@ -60,7 +60,7 @@ async fn shutdown_signal(token: CancellationToken) {
 
 async fn spawn_background_tasks(
     token: CancellationToken,
-    _runtime_store: Arc<RuntimeStore>,
+    runtime_store: Arc<RuntimeStore>,
     config: Arc<Config>,
     service_list: Arc<ServiceList>,
 ) {
@@ -72,11 +72,11 @@ async fn spawn_background_tasks(
         service_list
     )));
 
-    // handles.push(tokio::spawn(kafka_removal_reading(
-    //     token.child_token(),
-    //     config,
-    //     runtime_store,
-    // )));
+    handles.push(tokio::spawn(kafka_removal_reading(
+        token.child_token(),
+        config,
+        runtime_store,
+    )));
 
     while !handles.is_empty() {
         let (res, _idx, remaining) = select_all(handles).await;
