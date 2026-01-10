@@ -8,7 +8,7 @@ type Season = String;
 type Team = String;
 type Player = String;
 
-type TimeMap = SkipMap<TimeKey, CacheRecord>;
+type TimeMap = SkipMap<TimeKey, Arc<CacheRecord>>;
 type PlayerMap = DashMap<Player, Arc<TimeMap>>;
 type TeamMap = DashMap<Team, Arc<PlayerMap>>;
 type Cache = DashMap<Season, Arc<TeamMap>>;
@@ -44,7 +44,7 @@ impl RuntimeStore {
             .or_insert_with(|| Arc::new(SkipMap::new()))
             .clone();
 
-        time_map.insert(record.time_key, record);
+        time_map.insert(record.time_key, Arc::new(record));
     }
 
     pub fn remove(&self, record: &CacheRecord) {
@@ -72,7 +72,7 @@ impl RuntimeStore {
         }
     }
 
-    pub fn copy(&self, season: &str) -> Vec<CacheRecord> {
+    pub fn copy(&self, season: &str) -> Vec<Arc<CacheRecord>> {
         let Some(team_map) = self.cache.get(season) else {
             return Vec::new();
         };

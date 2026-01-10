@@ -96,6 +96,7 @@ async fn get_active_urls(pool: &PgPool, self_url: &str) -> Vec<String> {
                 FROM service_discovery
                 WHERE url != $1
                   AND last_heartbeat_time > $2
+                ORDER BY url
                 "#,
     )
     .bind(self_url)
@@ -111,6 +112,13 @@ async fn get_active_urls(pool: &PgPool, self_url: &str) -> Vec<String> {
 }
 
 async fn work_on_state(state: Vec<String>, service_list: ServiceList) {
-    let mut list = service_list.list.write().await;
-    *list = state;
+    if lists_different(&state, service_list.clone()).await {
+        let mut list = service_list.list.write().await;
+        *list = state;
+    }
+}
+
+async fn lists_different(state: &Vec<String>, service_list: ServiceList) -> bool {
+    let guard = service_list.list.read().await;
+    *guard != *state
 }

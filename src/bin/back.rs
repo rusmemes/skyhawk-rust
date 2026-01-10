@@ -223,8 +223,8 @@ async fn insert(records: &Vec<CacheRecord>, pool: &PgPool) {
 }
 
 async fn collect_batch(consumer: &StreamConsumer) -> Vec<BorrowedMessage<'_>> {
-    const MAX_BATCH_SIZE: usize = 500;
-    const MAX_WAIT: Duration = Duration::from_millis(10);
+    const MAX_BATCH_SIZE: usize = 100;
+    const MAX_WAIT: Duration = Duration::from_millis(100);
 
     let mut batch = Vec::with_capacity(MAX_BATCH_SIZE);
     let start = tokio::time::Instant::now();
