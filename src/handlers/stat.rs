@@ -80,7 +80,7 @@ async fn process_request(
     let temp_store = RuntimeStore::new();
     if let Some(db_records) = option {
         for db_record in db_records {
-            temp_store.log(db_record);
+            temp_store.log_arc(Arc::new(db_record));
         }
     }
 
@@ -89,9 +89,9 @@ async fn process_request(
         Err(error) => tracing::error!("{}", error),
     };
 
-    let in_memory_records = runtime_store.copy(&season_uppercased);
+    let in_memory_records = runtime_store.view(&season_uppercased);
     for in_memory_record in in_memory_records {
-        temp_store.log(in_memory_record);
+        temp_store.log_arc(in_memory_record);
     }
 
     convert_to_response(temp_store.view(&season_uppercased), request)

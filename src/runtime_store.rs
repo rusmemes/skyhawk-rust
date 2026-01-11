@@ -26,6 +26,10 @@ impl RuntimeStore {
     }
 
     pub fn log(&self, record: CacheRecord) {
+        self.log_arc(Arc::new(record));
+    }
+
+    pub fn log_arc(&self, record: Arc<CacheRecord>) {
         let log = &record.log;
 
         let team_map = self
@@ -44,7 +48,7 @@ impl RuntimeStore {
             .or_insert_with(|| Arc::new(SkipMap::new()))
             .clone();
 
-        time_map.insert(record.time_key, Arc::new(record));
+        time_map.insert(record.time_key, record);
     }
 
     pub fn remove(&self, record: &CacheRecord) {
