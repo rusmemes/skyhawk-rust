@@ -93,13 +93,6 @@ impl RuntimeStore {
 
         res
     }
-
-    pub fn copy(&self, season: &str) -> Vec<CacheRecord> {
-        self.view(season)
-            .into_iter()
-            .map(|arc| (*arc).clone())
-            .collect()
-    }
 }
 
 #[cfg(test)]
@@ -125,10 +118,6 @@ mod test {
         }));
 
         let vec = store.view("season");
-        println!("{:?}", vec);
-        assert_eq!(vec.len(), 1);
-
-        let vec = store.copy("season");
         println!("{:?}", vec);
         assert_eq!(vec.len(), 1);
     }
