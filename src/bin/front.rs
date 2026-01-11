@@ -2,7 +2,7 @@ use axum::routing::{post, Router};
 use skyhawk_rust::handlers::copy::copy;
 use skyhawk_rust::handlers::log::log;
 use skyhawk_rust::handlers::stat::stat;
-use skyhawk_rust::kafka_removal_reading::kafka_removal_reading;
+use skyhawk_rust::kafka_front_worker::kafka_front_worker;
 use skyhawk_rust::runtime_store::RuntimeStore;
 use skyhawk_rust::service_discovery::service_discovery;
 use skyhawk_rust::utils::{join_tasks, shutdown_signal};
@@ -69,7 +69,7 @@ async fn spawn_background_tasks(
         pool
     )));
 
-    handles.push(tokio::spawn(kafka_removal_reading(
+    handles.push(tokio::spawn(kafka_front_worker(
         token.child_token(),
         config,
         runtime_store,

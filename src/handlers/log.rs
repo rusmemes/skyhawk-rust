@@ -1,4 +1,4 @@
-use crate::protocol::{CacheRecord, Log};
+use crate::domain::{CacheRecord, Log};
 use crate::runtime_store::RuntimeStore;
 use crate::{Config, HEADER_SENDER};
 use axum::extract::State;

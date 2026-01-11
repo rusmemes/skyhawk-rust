@@ -1,4 +1,4 @@
-use crate::protocol::CacheRecord;
+use crate::domain::CacheRecord;
 use crate::runtime_store::RuntimeStore;
 use axum::extract::State;
 use axum::http::StatusCode;

@@ -1,4 +1,4 @@
-use crate::protocol::CacheRecord;
+use crate::domain::CacheRecord;
 use crate::runtime_store::RuntimeStore;
 use crate::{Config, HEADER_SENDER};
 use rdkafka::consumer::{Consumer, StreamConsumer};
@@ -9,7 +9,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-pub async fn kafka_removal_reading(
+pub async fn kafka_front_worker(
     token: CancellationToken,
     config: Config,
     runtime_store: RuntimeStore,

@@ -10,8 +10,8 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 pub mod handlers;
-pub mod kafka_removal_reading;
-pub mod protocol;
+pub mod kafka_front_worker;
+pub mod domain;
 pub mod runtime_store;
 pub mod service_discovery;
 pub mod utils;

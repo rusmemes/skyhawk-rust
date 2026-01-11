@@ -1,4 +1,4 @@
-use crate::protocol::{CacheRecord, StatPer, StatRequest, StatValue};
+use crate::domain::{CacheRecord, StatPer, StatRequest, StatValue};
 use crate::runtime_store::RuntimeStore;
 use crate::ServiceList;
 use axum::extract::State;

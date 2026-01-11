@@ -1,4 +1,4 @@
-use crate::protocol::{CacheRecord, TimeKey};
+use crate::domain::{CacheRecord, TimeKey};
 
 use crossbeam_skiplist::SkipMap;
 use dashmap::DashMap;
@@ -97,7 +97,7 @@ impl RuntimeStore {
 
 #[cfg(test)]
 mod test {
-    use crate::protocol::{CacheRecord, Log};
+    use crate::domain::{CacheRecord, Log};
     use crate::runtime_store::RuntimeStore;
 
     #[test]

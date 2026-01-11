@@ -5,7 +5,7 @@ use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::message::BorrowedMessage;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::{ClientConfig, Message};
-use skyhawk_rust::protocol::CacheRecord;
+use skyhawk_rust::domain::CacheRecord;
 use skyhawk_rust::utils::{join_tasks, shutdown_signal};
 use skyhawk_rust::Config;
 use sqlx::{Executor, PgPool};
