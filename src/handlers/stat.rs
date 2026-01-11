@@ -1,4 +1,4 @@
-use crate::protocol::{CacheRecord, StatRequest, StatValue};
+use crate::protocol::{CacheRecord, StatPer, StatRequest, StatValue};
 use crate::runtime_store::RuntimeStore;
 use crate::ServiceList;
 use axum::extract::State;
@@ -7,6 +7,7 @@ use axum::Json;
 use reqwest::Client;
 use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use tokio::task::JoinHandle;
 
 pub async fn stat(
@@ -16,7 +17,6 @@ pub async fn stat(
     State(http): State<Client>,
     Json(stat_request): Json<StatRequest>,
 ) -> Result<Json<HashMap<String, HashMap<StatValue, f64>>>, (StatusCode, String)> {
-
     if stat_request.season.is_empty()
         || stat_request.season.chars().all(char::is_whitespace)
         || stat_request.values.is_empty()
@@ -28,7 +28,7 @@ pub async fn stat(
     }
 
     let stat_request = StatRequest {
-        season: stat_request.season.to_uppercase(),
+        season: stat_request.season,
         per: stat_request.per,
         values: stat_request
             .values
@@ -38,7 +38,9 @@ pub async fn stat(
             .collect(),
     };
 
-    Ok(Json(process_request(runtime_store, pool, http, service_list, stat_request).await))
+    Ok(Json(
+        process_request(runtime_store, pool, http, service_list, stat_request).await,
+    ))
 }
 
 async fn process_request(
@@ -48,14 +50,108 @@ async fn process_request(
     service_list: ServiceList,
     request: StatRequest,
 ) -> HashMap<String, HashMap<StatValue, f64>> {
+
+    let season_uppercased = request.season.to_uppercase();
     let sync_state_handle = tokio::spawn(sync_state(
         runtime_store.clone(),
         service_list,
         http,
-        request.season.clone(),
+        season_uppercased.clone(),
     ));
 
-    todo!()
+    let value_columns = request
+        .values
+        .iter()
+        .map(|value| value.to_db_column_name().to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let sql = format!(
+        "select t1,t2,season,team,player,{} from nba_stats where season = $1",
+        value_columns
+    );
+
+    let option: Option<Vec<CacheRecord>> = sqlx::query_as(&sql)
+        .bind(&season_uppercased)
+        .fetch_all(&pool)
+        .await
+        .ok();
+
+    let temp_store = RuntimeStore::new();
+    if let Some(db_records) = option {
+        for db_record in db_records {
+            temp_store.log(db_record);
+        }
+    }
+
+    match sync_state_handle.await {
+        Ok(_) => {}
+        Err(error) => tracing::error!("{}", error),
+    };
+
+    let in_memory_records = runtime_store.copy(&season_uppercased);
+    for in_memory_record in in_memory_records {
+        temp_store.log(in_memory_record);
+    }
+
+    convert_to_response(temp_store.view(&season_uppercased), request)
+}
+
+fn convert_to_response(
+    view: Vec<Arc<CacheRecord>>,
+    request: StatRequest,
+) -> HashMap<String, HashMap<StatValue, f64>> {
+    let mut map = HashMap::new();
+
+    for record in view {
+        let record = &record.log;
+
+        let key = match request.per {
+            StatPer::Team => record.team.clone(),
+            StatPer::Player => record.player.clone(),
+        };
+
+        let key_map = map.entry(key).or_insert_with(HashMap::new);
+
+        for request_stat_value in &request.values {
+            match request_stat_value {
+                StatValue::Points => {
+                    let value = key_map.entry(StatValue::Points).or_insert(0.0);
+                    *value += record.points.unwrap_or(0) as f64
+                }
+                StatValue::Rebounds => {
+                    let value = key_map.entry(StatValue::Rebounds).or_insert(0.0);
+                    *value += record.rebounds.unwrap_or(0) as f64
+                }
+                StatValue::Assists => {
+                    let value = key_map.entry(StatValue::Assists).or_insert(0.0);
+                    *value += record.assists.unwrap_or(0) as f64
+                }
+                StatValue::Steals => {
+                    let value = key_map.entry(StatValue::Steals).or_insert(0.0);
+                    *value += record.steals.unwrap_or(0) as f64
+                }
+                StatValue::Blocks => {
+                    let value = key_map.entry(StatValue::Blocks).or_insert(0.0);
+                    *value += record.blocks.unwrap_or(0) as f64
+                }
+                StatValue::Fouls => {
+                    let value = key_map.entry(StatValue::Fouls).or_insert(0.0);
+                    *value += record.fouls.unwrap_or(0) as f64
+                }
+                StatValue::Turnovers => {
+                    let value = key_map.entry(StatValue::Turnovers).or_insert(0.0);
+                    *value += record.turnovers.unwrap_or(0) as f64
+                }
+                StatValue::MinutesPlayed => {
+                    let value = key_map.entry(StatValue::MinutesPlayed).or_insert(0.0);
+                    *value += record.minutes_played.unwrap_or(0.0) as f64
+                }
+            }
+        }
+    }
+
+    map
 }
 
 async fn sync_state(

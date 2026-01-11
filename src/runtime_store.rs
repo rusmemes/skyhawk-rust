@@ -72,7 +72,7 @@ impl RuntimeStore {
         }
     }
 
-    pub fn copy(&self, season: &str) -> Vec<Arc<CacheRecord>> {
+    pub fn view(&self, season: &str) -> Vec<Arc<CacheRecord>> {
         let Some(team_map) = self.cache.get(season) else {
             return Vec::new();
         };
@@ -88,6 +88,13 @@ impl RuntimeStore {
         }
 
         res
+    }
+
+    pub fn copy(&self, season: &str) -> Vec<CacheRecord> {
+        self.view(season)
+            .into_iter()
+            .map(|arc| (*arc).clone())
+            .collect()
     }
 }
 
@@ -112,6 +119,10 @@ mod test {
             turnovers: None,
             minutes_played: None,
         }));
+
+        let vec = store.view("season");
+        println!("{:?}", vec);
+        assert_eq!(vec.len(), 1);
 
         let vec = store.copy("season");
         println!("{:?}", vec);

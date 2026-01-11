@@ -198,7 +198,7 @@ async fn insert(records: &Vec<CacheRecord>, pool: &PgPool) {
                 blocks = EXCLUDED.blocks,
                 fouls = EXCLUDED.fouls,
                 turnovers = EXCLUDED.turnovers,
-                minutesPlayed = EXCLUDED.minutesPlayed
+                minutes_played = EXCLUDED.minutes_played
             "#,
         )
         .bind(rec.time_key.0)
