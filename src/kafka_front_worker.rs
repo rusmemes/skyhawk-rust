@@ -2,8 +2,9 @@ use crate::domain::CacheRecord;
 use crate::runtime_store::RuntimeStore;
 use crate::{Config, HEADER_SENDER};
 use rdkafka::consumer::{Consumer, StreamConsumer};
-use rdkafka::message::Headers;
+use rdkafka::message::{BorrowedMessage, Headers};
 use rdkafka::{ClientConfig, Message};
+use serde_json::Error;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
@@ -12,7 +13,7 @@ pub async fn kafka_front_worker(
     config: Config,
     runtime_store: RuntimeStore,
 ) {
-    tracing::info!("Kafka removal reading worker started");
+    tracing::info!("Kafka worker started");
 
     let consumer: Arc<StreamConsumer> = Arc::new(
         ClientConfig::new()
@@ -39,48 +40,46 @@ pub async fn kafka_front_worker(
             result = consumer.recv() => {
                 match result {
                     Err(e) => tracing::error!("Kafka error: {}", e),
-                    Ok(msg) => {
-                        if msg.topic() == config.kafka_topic_main.as_str() {
-
-                            let headers = match msg.headers() {
-                                Some(h) => h,
-                                None => continue,
-                            };
-
-                            let sender = headers
-                                .iter()
-                                .find(|h| h.key == HEADER_SENDER)
-                                .and_then(|h| h.value)
-                                .and_then(|v| std::str::from_utf8(v).ok());
-
-                            if sender != Some(config.instance_id.as_str()) {
-                                cache_record(&runtime_store, msg.payload());
-                            }
-
-                        } else if msg.topic() == config.kafka_topic_removal.as_str() {
-                            clear_runtime_store(&runtime_store, msg.payload());
-                        }
-                    }
+                    Ok(msg) => process_msg(msg, &runtime_store, &config)
                 }
             }
         }
     }
 }
 
-fn cache_record(runtime_store: &RuntimeStore, payload: Option<&[u8]>) {
-    if let Some(payload) = payload {
-        let record: CacheRecord =
-            serde_json::from_slice(&payload).expect("Failed to parse kafka payload");
+fn process_msg(msg: BorrowedMessage, runtime_store: &RuntimeStore, config: &Config) {
+    if msg.topic() == config.kafka_topic_main.as_str() {
+        let headers = match msg.headers() {
+            Some(h) => h,
+            None => return,
+        };
 
-        runtime_store.log(record);
+        let sender = headers
+            .iter()
+            .find(|h| h.key == HEADER_SENDER)
+            .and_then(|h| h.value)
+            .and_then(|v| std::str::from_utf8(v).ok());
+
+        if sender != Some(config.instance_id.as_str()) {
+            process(msg.payload(), |record| runtime_store.log(record));
+        }
+    } else if msg.topic() == config.kafka_topic_removal.as_str() {
+        process(msg.payload(), |record| runtime_store.remove(&record));
     }
 }
 
-fn clear_runtime_store(runtime_store: &RuntimeStore, payload: Option<&[u8]>) {
+fn process<F>(payload: Option<&[u8]>, ok_processor: F)
+where
+    F: FnOnce(CacheRecord),
+{
     if let Some(payload) = payload {
-        let record: CacheRecord =
-            serde_json::from_slice(&payload).expect("Failed to parse kafka payload");
+        let record: Result<CacheRecord, Error> = serde_json::from_slice(payload);
 
-        runtime_store.remove(&record);
+        match record {
+            Ok(record) => ok_processor(record),
+            Err(e) => {
+                tracing::error!(error=%e, "Error deserializing cached record");
+            }
+        }
     }
 }
