@@ -5,8 +5,6 @@ use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::message::Headers;
 use rdkafka::{ClientConfig, Message};
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 pub async fn kafka_front_worker(
@@ -35,49 +33,41 @@ pub async fn kafka_front_worker(
     loop {
         tokio::select! {
             _ = token.cancelled() => {
-                tracing::info!("Kafka removal reading worker shutting down");
+                tracing::info!("Kafka worker is shutting down");
                 break;
             }
-            _ = sleep(Duration::from_millis(1)) => {
-                iteration(consumer.clone(), runtime_store.clone(), config.clone()).await;
-            }
-        }
-    }
-}
+            result = consumer.recv() => {
+                match result {
+                    Err(e) => tracing::error!("Kafka error: {}", e),
+                    Ok(msg) => {
+                        if msg.topic() == config.kafka_topic_main.as_str() {
 
-async fn iteration(
-    consumer: Arc<StreamConsumer>,
-    runtime_store: RuntimeStore,
-    config: Config,
-) {
-    loop {
-        match consumer.recv().await {
-            Err(e) => tracing::error!("Kafka error: {}", e),
-            Ok(msg) => {
-                if msg.topic() == config.kafka_topic_main.as_str() {
-                    if let Some(headers) = msg.headers() {
-                        if let Some(bytes) = headers
-                            .iter()
-                            .find(|header| header.key == HEADER_SENDER)
-                            .and_then(|header| header.value)
-                        {
-                            let header_value = std::str::from_utf8(bytes)
-                                .expect("Failed to parse kafka sender header value");
+                            let headers = match msg.headers() {
+                                Some(h) => h,
+                                None => continue,
+                            };
 
-                            if header_value != config.instance_id.as_str() {
-                                cache_record(runtime_store.clone(), msg.payload());
+                            let sender = headers
+                                .iter()
+                                .find(|h| h.key == HEADER_SENDER)
+                                .and_then(|h| h.value)
+                                .and_then(|v| std::str::from_utf8(v).ok());
+
+                            if sender != Some(config.instance_id.as_str()) {
+                                cache_record(&runtime_store, msg.payload());
                             }
+
+                        } else if msg.topic() == config.kafka_topic_removal.as_str() {
+                            clear_runtime_store(&runtime_store, msg.payload());
                         }
                     }
-                } else if msg.topic() == config.kafka_topic_removal.as_str() {
-                    clear_runtime_store(runtime_store.clone(), msg.payload());
                 }
             }
         }
     }
 }
 
-fn cache_record(runtime_store: RuntimeStore, payload: Option<&[u8]>) {
+fn cache_record(runtime_store: &RuntimeStore, payload: Option<&[u8]>) {
     if let Some(payload) = payload {
         let record: CacheRecord =
             serde_json::from_slice(&payload).expect("Failed to parse kafka payload");
@@ -86,7 +76,7 @@ fn cache_record(runtime_store: RuntimeStore, payload: Option<&[u8]>) {
     }
 }
 
-fn clear_runtime_store(runtime_store: RuntimeStore, payload: Option<&[u8]>) {
+fn clear_runtime_store(runtime_store: &RuntimeStore, payload: Option<&[u8]>) {
     if let Some(payload) = payload {
         let record: CacheRecord =
             serde_json::from_slice(&payload).expect("Failed to parse kafka payload");
