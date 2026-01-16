@@ -55,7 +55,8 @@ async fn sync(pool: &PgPool, self_url: &str, service_list: ServiceList) {
 async fn heartbeat(pool: &PgPool, self_url: &str) {
     let now = OffsetDateTime::now_utc();
 
-    sqlx::query!(
+    sqlx::query_as!(
+        Self,
         r#"
         INSERT INTO service_discovery (url, last_heartbeat_time)
         VALUES ($1, $2)

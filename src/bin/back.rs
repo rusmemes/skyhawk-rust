@@ -157,7 +157,8 @@ async fn insert(records: &Vec<CacheRecord>, pool: &PgPool) {
     let mut tx = pool.begin().await.unwrap();
 
     for rec in records {
-        sqlx::query!(
+        sqlx::query_as!(
+            Self,
             r#"
             INSERT INTO nba_stats (
                 t1, t2, season, team, player,
