@@ -145,7 +145,7 @@ fn convert_to_response(
                 }
                 StatValue::MinutesPlayed => {
                     let value = key_map.entry(StatValue::MinutesPlayed).or_insert(0.0);
-                    *value += record.minutes_played.unwrap_or(0.0) as f64
+                    *value += record.minutes_played.unwrap_or(0.0)
                 }
             }
         }

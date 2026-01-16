@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO service_discovery (url, last_heartbeat_time)\n        VALUES ($1, $2)\n        ON CONFLICT (url) DO UPDATE\n          SET last_heartbeat_time = EXCLUDED.last_heartbeat_time\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "65e5950d24b2dd547e35bc1f13ef3d46aff198318cccb4dacc620ddadc82e2f5"
+}

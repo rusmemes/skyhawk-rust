@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM service_discovery WHERE url = $1 OR last_heartbeat_time < $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "338ec017f12fef8f4380e4df02addf0d758a800d1a007f37f78eae5fa1977c5d"
+}

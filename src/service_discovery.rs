@@ -1,18 +1,9 @@
 use crate::{Config, ServiceList};
-use sqlx::{Executor, PgPool, Row};
+use sqlx::PgPool;
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
-
-const DDL: &str = r#"
-    create table if not exists service_discovery
-    (
-      url                 text      not null,
-      last_heartbeat_time timestamp not null
-    );
-    create unique index if not exists service_discovery_url_unique_idx ON service_discovery (url);
-"#;
 
 pub async fn service_discovery(
     token: CancellationToken,
@@ -26,8 +17,6 @@ pub async fn service_discovery(
         .service_discovery_self_url
         .as_deref()
         .expect("No self url provided");
-
-    run_ddl(&pool).await;
 
     loop {
         tokio::select! {
@@ -47,18 +36,14 @@ async fn remove_expired_records(pool: &PgPool, self_url: &str) {
     const DURATION: Duration = Duration::from_secs(5);
 
     let cutoff_time = OffsetDateTime::now_utc() - DURATION;
-    sqlx::query("DELETE FROM service_discovery WHERE url = $1 OR last_heartbeat_time < $2")
-        .bind(self_url)
-        .bind(cutoff_time)
-        .execute(pool)
-        .await
-        .expect("Error executing database table for service discovery");
-}
-
-async fn run_ddl(pool: &PgPool) {
-    pool.execute(DDL)
-        .await
-        .expect("Error executing database table for service discovery");
+    sqlx::query!(
+        "DELETE FROM service_discovery WHERE url = $1 OR last_heartbeat_time < $2",
+        self_url,
+        cutoff_time
+    )
+    .execute(pool)
+    .await
+    .expect("Error executing database table for service discovery");
 }
 
 async fn sync(pool: &PgPool, self_url: &str, service_list: ServiceList) {
@@ -70,45 +55,41 @@ async fn sync(pool: &PgPool, self_url: &str, service_list: ServiceList) {
 async fn heartbeat(pool: &PgPool, self_url: &str) {
     let now = OffsetDateTime::now_utc();
 
-    sqlx::query(
+    sqlx::query!(
         r#"
         INSERT INTO service_discovery (url, last_heartbeat_time)
         VALUES ($1, $2)
         ON CONFLICT (url) DO UPDATE
           SET last_heartbeat_time = EXCLUDED.last_heartbeat_time
         "#,
+        self_url,
+        now
     )
-    .bind(self_url)
-    .bind(now)
     .execute(pool)
     .await
     .expect("Error executing database table for service discovery");
 }
 
 async fn get_active_urls(pool: &PgPool, self_url: &str) -> Vec<String> {
-
     const DURATION: Duration = Duration::from_secs(5);
     let cutoff_time = OffsetDateTime::now_utc() - DURATION;
 
-    let rows = sqlx::query(
+    let rows = sqlx::query!(
         r#"
-                SELECT url
-                FROM service_discovery
-                WHERE url != $1
-                  AND last_heartbeat_time > $2
-                ORDER BY url
-                "#,
+        SELECT url
+        FROM service_discovery
+        WHERE url != $1
+          AND last_heartbeat_time > $2
+        ORDER BY url
+        "#,
+        self_url,
+        cutoff_time
     )
-    .bind(self_url)
-    .bind(cutoff_time)
     .fetch_all(pool)
     .await
-    .expect("Error executing database table for service discovery");
+    .expect("query failed");
 
-    rows.into_iter()
-        .map(|row| row.try_get("url"))
-        .collect::<Result<_, _>>()
-        .expect("Error getting state from database")
+    rows.into_iter().map(|r| r.url).collect()
 }
 
 async fn work_on_state(state: Vec<String>, service_list: ServiceList) {

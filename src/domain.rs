@@ -9,22 +9,22 @@ pub struct Log {
     pub team: String,
     pub player: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub points: Option<i16>,
+    pub points: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rebounds: Option<i16>,
+    pub rebounds: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub assists: Option<i16>,
+    pub assists: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub steals: Option<i16>,
+    pub steals: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub blocks: Option<i16>,
+    pub blocks: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fouls: Option<i16>,
+    pub fouls: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub turnovers: Option<i16>,
+    pub turnovers: Option<i32>,
     #[serde(alias = "minutesPlayed")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub minutes_played: Option<f32>,
+    pub minutes_played: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

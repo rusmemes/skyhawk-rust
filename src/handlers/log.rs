@@ -102,7 +102,7 @@ impl Log {
         }
     }
 
-    fn check_number(opt: Option<i16>, errors: &mut Vec<String>, label: &str, empty: &mut bool) {
+    fn check_number(opt: Option<i32>, errors: &mut Vec<String>, label: &str, empty: &mut bool) {
         if let Some(value) = opt {
             if value > 0 {
                 *empty = false;

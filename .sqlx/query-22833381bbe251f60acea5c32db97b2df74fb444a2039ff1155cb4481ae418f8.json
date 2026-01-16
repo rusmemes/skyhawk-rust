@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO nba_stats (\n                t1, t2, season, team, player,\n                points, rebounds, assists, steals,\n                blocks, fouls, turnovers, minutes_played\n            )\n            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)\n            ON CONFLICT (season, player, team, t1, t2)\n            DO UPDATE SET\n                points = EXCLUDED.points,\n                rebounds = EXCLUDED.rebounds,\n                assists = EXCLUDED.assists,\n                steals = EXCLUDED.steals,\n                blocks = EXCLUDED.blocks,\n                fouls = EXCLUDED.fouls,\n                turnovers = EXCLUDED.turnovers,\n                minutes_played = EXCLUDED.minutes_played\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Float8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "22833381bbe251f60acea5c32db97b2df74fb444a2039ff1155cb4481ae418f8"
+}

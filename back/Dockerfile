@@ -12,7 +12,12 @@ RUN apt-get update && apt-get install -y \
 
 COPY Cargo.toml Cargo.lock ./
 
+COPY .sqlx ./.sqlx
+COPY migrations ./migrations
 COPY src ./src
+
+ENV SQLX_OFFLINE=true
+
 RUN cargo build --release --bin back
 
 

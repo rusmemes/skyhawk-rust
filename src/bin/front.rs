@@ -25,6 +25,11 @@ async fn main() {
         .await
         .expect("Error connecting to database");
 
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("Failed to run migrations");
+
     let front_state = FrontState::new(pool.clone(), config.clone());
 
     let supervisor = tokio::spawn(spawn_background_tasks(

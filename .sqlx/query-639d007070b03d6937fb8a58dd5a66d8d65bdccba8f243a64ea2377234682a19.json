@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT url\n        FROM service_discovery\n        WHERE url != $1\n          AND last_heartbeat_time > $2\n        ORDER BY url\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "url",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "639d007070b03d6937fb8a58dd5a66d8d65bdccba8f243a64ea2377234682a19"
+}

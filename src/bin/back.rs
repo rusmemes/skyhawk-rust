@@ -8,33 +8,12 @@ use rdkafka::{ClientConfig, Message};
 use skyhawk_rust::domain::CacheRecord;
 use skyhawk_rust::utils::{join_tasks, shutdown_signal};
 use skyhawk_rust::Config;
-use sqlx::{Executor, PgPool};
+use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
-
-const DDL: &str = r#"
-    create table if not exists nba_stats
-    (
-        t1             bigint not null,
-        t2             bigint not null,
-        season         text   not null,
-        team           text   not null,
-        player         text   not null,
-        points         integer,
-        rebounds       integer,
-        assists        integer,
-        steals         integer,
-        blocks         integer,
-        fouls          integer,
-        turnovers      integer,
-        minutes_played decimal(10, 4)
-    );
-    create unique index if not exists nba_stats_unique_idx ON nba_stats (season,player,team,t1,t2);
-    create index if not exists nba_stats_agg_idx ON nba_stats (season,player,team);
-"#;
 
 #[tokio::main]
 async fn main() {
@@ -68,7 +47,10 @@ async fn run_kafka_worker(token: CancellationToken) {
         .await
         .expect("Error connecting to database");
 
-    run_ddl(&pool).await;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("Failed to run migrations");
 
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", config.kafka_bootstrap_servers.as_str())
@@ -100,12 +82,6 @@ async fn run_kafka_worker(token: CancellationToken) {
             }
         }
     }
-}
-
-async fn run_ddl(pool: &PgPool) {
-    pool.execute(DDL)
-        .await
-        .expect("Error executing database table for nba stats");
 }
 
 async fn iteration(
@@ -181,7 +157,7 @@ async fn insert(records: &Vec<CacheRecord>, pool: &PgPool) {
     let mut tx = pool.begin().await.unwrap();
 
     for rec in records {
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO nba_stats (
                 t1, t2, season, team, player,
@@ -200,20 +176,20 @@ async fn insert(records: &Vec<CacheRecord>, pool: &PgPool) {
                 turnovers = EXCLUDED.turnovers,
                 minutes_played = EXCLUDED.minutes_played
             "#,
+            rec.time_key.0,
+            rec.time_key.1,
+            &rec.log.season,
+            &rec.log.team,
+            &rec.log.player,
+            rec.log.points,
+            rec.log.rebounds,
+            rec.log.assists,
+            rec.log.steals,
+            rec.log.blocks,
+            rec.log.fouls,
+            rec.log.turnovers,
+            rec.log.minutes_played
         )
-        .bind(rec.time_key.0)
-        .bind(rec.time_key.1)
-        .bind(&rec.log.season)
-        .bind(&rec.log.team)
-        .bind(&rec.log.player)
-        .bind(rec.log.points)
-        .bind(rec.log.rebounds)
-        .bind(rec.log.assists)
-        .bind(rec.log.steals)
-        .bind(rec.log.blocks)
-        .bind(rec.log.fouls)
-        .bind(rec.log.turnovers)
-        .bind(rec.log.minutes_played)
         .execute(&mut *tx)
         .await
         .expect("Error executing insertion");
