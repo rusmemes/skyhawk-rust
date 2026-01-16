@@ -160,7 +160,7 @@ async fn sync_state(
     http: Client,
     season: String,
 ) {
-    let vec = call_another_front_instances(service_list, http, season, runtime_store.clone()).await;
+    let vec = call_another_front_instances(service_list, http, season, runtime_store).await;
 
     for join_handle in vec {
         match join_handle.await {

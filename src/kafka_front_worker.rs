@@ -26,7 +26,7 @@ pub async fn kafka_front_worker(
     );
 
     consumer
-        .subscribe(&[&config.kafka_topic_main, &config.kafka_topic_removal])
+        .subscribe(&[config.kafka_topic_main.as_str(), config.kafka_topic_removal.as_str()])
         .expect("can't subscribe to kafka topics");
 
     tracing::info!("Consumer started");
