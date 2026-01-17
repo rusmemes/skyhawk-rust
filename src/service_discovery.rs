@@ -26,7 +26,7 @@ pub async fn service_discovery(
                 break;
             }
             _ = sleep(Duration::from_secs(1)) => {
-                sync(&pool, self_url, service_list.clone()).await;
+                sync(&pool, self_url, &service_list).await;
             }
         }
     }
@@ -46,7 +46,7 @@ async fn remove_expired_records(pool: &PgPool, self_url: &str) {
     .expect("Error executing database table for service discovery");
 }
 
-async fn sync(pool: &PgPool, self_url: &str, service_list: ServiceList) {
+async fn sync(pool: &PgPool, self_url: &str, service_list: &ServiceList) {
     heartbeat(pool, self_url).await;
     let urls = get_active_urls(pool, self_url).await;
     work_on_state(urls, service_list).await;
@@ -93,14 +93,14 @@ async fn get_active_urls(pool: &PgPool, self_url: &str) -> Vec<String> {
     rows.into_iter().map(|r| r.url).collect()
 }
 
-async fn work_on_state(state: Vec<String>, service_list: ServiceList) {
-    if lists_different(&state, service_list.clone()).await {
+async fn work_on_state(state: Vec<String>, service_list: &ServiceList) {
+    if lists_different(&state, service_list).await {
         let mut list = service_list.list.write().await;
         *list = state;
     }
 }
 
-async fn lists_different(state: &Vec<String>, service_list: ServiceList) -> bool {
+async fn lists_different(state: &Vec<String>, service_list: &ServiceList) -> bool {
     let guard = service_list.list.read().await;
     *guard != *state
 }
