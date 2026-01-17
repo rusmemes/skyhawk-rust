@@ -62,7 +62,7 @@ async fn process_request(
     let value_columns = request
         .values
         .iter()
-        .map(|value| value.to_db_column_name().to_string())
+        .map(|value| value.to_db_column_name())
         .collect::<Vec<_>>()
         .join(",");
 
