@@ -77,20 +77,20 @@ async fn run_kafka_worker(token: CancellationToken) {
                 tracing::info!("Kafka removal reading worker shutting down");
                 break;
             }
-            _ = sleep(Duration::from_millis(1)) => {
-                iteration(pool.clone(), consumer.clone(), producer.clone(), config.clone()).await;
+            batch = collect_batch(&consumer) => {
+                iteration(&pool, &consumer, &producer, &config, batch).await;
             }
         }
     }
 }
 
 async fn iteration(
-    pool: PgPool,
-    consumer: Arc<StreamConsumer>,
-    producer: FutureProducer,
-    config: Arc<Config>,
+    pool: &PgPool,
+    consumer: &StreamConsumer,
+    producer: &FutureProducer,
+    config: &Config,
+    batch: Vec<BorrowedMessage<'_>>,
 ) {
-    let batch = collect_batch(&consumer).await;
     if batch.is_empty() {
         return;
     }
@@ -107,7 +107,7 @@ async fn iteration(
         });
 
     for (key, v) in map {
-        process_messages_of_the_same_key(&pool, producer.clone(), &config, key, v).await;
+        process_messages_of_the_same_key(pool, producer, &config, key, v).await;
     }
 
     consumer
@@ -120,8 +120,8 @@ async fn iteration(
 
 async fn process_messages_of_the_same_key(
     pool: &PgPool,
-    producer: FutureProducer,
-    config: &Arc<Config>,
+    producer: &FutureProducer,
+    config: &Config,
     key: &[u8],
     v: Vec<&[u8]>,
 ) {
