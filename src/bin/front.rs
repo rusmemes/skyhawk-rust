@@ -35,7 +35,7 @@ async fn main() {
     let supervisor = tokio::spawn(spawn_background_tasks(
         shutdown.clone(),
         front_state.runtime_store.clone(),
-        front_state.config.clone(),
+        config,
         front_state.service_list.clone(),
         pool
     ));
