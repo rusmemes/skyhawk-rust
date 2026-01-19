@@ -30,12 +30,12 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
-    let front_state = FrontState::new(pool.clone(), config.clone());
+    let front_state = FrontState::new(pool.clone(), config);
 
     let supervisor = tokio::spawn(spawn_background_tasks(
         shutdown.clone(),
         front_state.runtime_store.clone(),
-        config,
+        front_state.config.clone(),
         front_state.service_list.clone(),
         pool
     ));
