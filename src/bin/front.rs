@@ -1,4 +1,5 @@
 use axum::routing::{post, Router};
+use skyhawk_rust::errors::AppError;
 use skyhawk_rust::handlers::copy::copy;
 use skyhawk_rust::handlers::log::log;
 use skyhawk_rust::handlers::stat::stat;
@@ -13,31 +14,26 @@ use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), AppError> {
     tracing_subscriber::fmt::init();
     dotenv::dotenv().ok();
 
     let shutdown = CancellationToken::new();
 
-    let config = Config::new();
+    let config = Config::new()?;
 
-    let pool = PgPool::connect(&config.database_url)
-        .await
-        .expect("Error connecting to database");
+    let pool = PgPool::connect(&config.database_url).await?;
 
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .expect("Failed to run migrations");
+    sqlx::migrate!("./migrations").run(&pool).await?;
 
-    let front_state = FrontState::new(pool.clone(), config);
+    let front_state = FrontState::new(pool.clone(), config)?;
 
     let supervisor = tokio::spawn(spawn_background_tasks(
         shutdown.clone(),
         front_state.runtime_store.clone(),
         front_state.config.clone(),
         front_state.service_list.clone(),
-        pool
+        pool,
     ));
 
     let app = Router::new()
@@ -46,16 +42,17 @@ async fn main() {
         .route("/stat-copy", post(copy))
         .with_state(front_state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
 
     tracing::info!("Listening on http://0.0.0.0:8080");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(shutdown))
-        .await
-        .unwrap();
+        .await?;
 
     let _ = timeout(Duration::from_secs(30), supervisor).await;
+
+    Ok(())
 }
 
 async fn spawn_background_tasks(
@@ -71,7 +68,7 @@ async fn spawn_background_tasks(
         token.child_token(),
         config.clone(),
         service_list,
-        pool
+        pool,
     )));
 
     handles.push(tokio::spawn(kafka_front_worker(

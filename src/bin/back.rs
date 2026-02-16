@@ -6,7 +6,7 @@ use rdkafka::message::BorrowedMessage;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::{ClientConfig, Message};
 use skyhawk_rust::domain::CacheRecord;
-use skyhawk_rust::utils::{join_tasks, shutdown_signal};
+use skyhawk_rust::utils::{join_tasks, shutdown_signal, Result};
 use skyhawk_rust::Config;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     dotenv::dotenv().ok();
 
@@ -24,15 +24,16 @@ async fn main() {
     let supervisor = tokio::spawn(spawn_background_tasks(shutdown.clone()));
 
     let app = Router::new().route("/health", get(|| async { StatusCode::OK }));
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     tracing::info!("Listening on http://0.0.0.0:8080");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(shutdown))
-        .await
-        .unwrap();
+        .await?;
 
     let _ = timeout(Duration::from_secs(30), supervisor).await;
+
+    Ok(())
 }
 
 async fn spawn_background_tasks(token: CancellationToken) {
@@ -40,22 +41,16 @@ async fn spawn_background_tasks(token: CancellationToken) {
     join_tasks(token, vec![tokio::spawn(run_kafka_worker(child_token))]).await
 }
 
-async fn run_kafka_worker(token: CancellationToken) {
-    let config = Arc::new(Config::new());
+async fn run_kafka_worker(token: CancellationToken) -> Result<()> {
+    let config = Arc::new(Config::new()?);
 
-    let pool = PgPool::connect(&config.database_url)
-        .await
-        .expect("Error connecting to database");
+    let pool = PgPool::connect(&config.database_url).await?;
 
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .expect("Failed to run migrations");
+    sqlx::migrate!("./migrations").run(&pool).await?;
 
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", config.kafka_bootstrap_servers.as_str())
-        .create()
-        .expect("Kafka producer creation error");
+        .create()?;
 
     let consumer: Arc<StreamConsumer> = Arc::new(
         ClientConfig::new()
@@ -63,13 +58,10 @@ async fn run_kafka_worker(token: CancellationToken) {
             .set("group.id", config.kafka_group_id.as_str())
             .set("auto.offset.reset", "earliest")
             .set("enable.auto.commit", "false")
-            .create()
-            .expect("consumer creation failed"),
+            .create()?,
     );
 
-    consumer
-        .subscribe(&[&config.kafka_topic_main])
-        .expect("can't subscribe to main topic");
+    consumer.subscribe(&[&config.kafka_topic_main])?;
 
     loop {
         tokio::select! {
@@ -78,10 +70,12 @@ async fn run_kafka_worker(token: CancellationToken) {
                 break;
             }
             batch = collect_batch(&consumer) => {
-                iteration(&pool, &consumer, &producer, &config, batch).await;
+                iteration(&pool, &consumer, &producer, &config, batch?).await?;
             }
         }
     }
+
+    Ok(())
 }
 
 async fn iteration(
@@ -90,32 +84,28 @@ async fn iteration(
     producer: &FutureProducer,
     config: &Config,
     batch: Vec<BorrowedMessage<'_>>,
-) {
+) -> Result<()> {
     if batch.is_empty() {
-        return;
+        return Ok(());
     }
 
     let map = batch
         .iter()
-        .map(|msg| {
-            let bytes = msg.payload().expect("Error getting payload");
-            (msg.key().expect("Failed to get record key"), bytes)
-        })
+        .filter_map(|msg| Some((msg.key()?, msg.payload()?)))
         .fold(HashMap::new(), |mut map, item| {
             map.entry(item.0).or_insert_with(Vec::new).push(item.1);
             map
         });
 
     for (key, v) in map {
-        process_messages_of_the_same_key(pool, producer, &config, key, v).await;
+        let _ = process_messages_of_the_same_key(pool, producer, &config, key, v).await?;
     }
 
-    consumer
-        .commit_message(
-            batch.last().expect("Error committing batch"),
-            CommitMode::Async,
-        )
-        .expect("Error committing batch");
+    if let Some(last) = batch.last() {
+        consumer.commit_message(last, CommitMode::Async)?;
+    }
+
+    Ok(())
 }
 
 async fn process_messages_of_the_same_key(
@@ -124,37 +114,38 @@ async fn process_messages_of_the_same_key(
     config: &Config,
     key: &[u8],
     v: Vec<&[u8]>,
-) {
+) -> Result<()> {
     if v.is_empty() {
-        return;
+        return Ok(());
     }
 
     let mut v = v
         .into_iter()
-        .map(|bytes| {
-            serde_json::from_slice::<CacheRecord>(bytes).expect("Error deserializing payload")
-        })
+        .filter_map(|bytes| serde_json::from_slice::<CacheRecord>(bytes).ok())
         .collect::<Vec<_>>();
 
     v.sort_by_key(|rec| rec.time_key);
-    insert(&v, &pool).await;
+    insert(&v, &pool).await?;
 
-    let last_record = v.last().expect("Error getting last entry");
-    let json = serde_json::to_string(&last_record).expect("Error serializing last record");
+    if let Some(last_record) = v.last() {
+        let json = serde_json::to_string(&last_record)?;
 
-    producer
-        .send(
-            FutureRecord::to(&config.kafka_topic_removal)
-                .key(key)
-                .payload(&json),
-            Duration::from_secs(5),
-        )
-        .await
-        .expect("Error sending message");
+        producer
+            .send(
+                FutureRecord::to(&config.kafka_topic_removal)
+                    .key(key)
+                    .payload(&json),
+                Duration::from_secs(5),
+            )
+            .await
+            .map_err(|(error, _)| error)?;
+    }
+
+    Ok(())
 }
 
-async fn insert(records: &Vec<CacheRecord>, pool: &PgPool) {
-    let mut tx = pool.begin().await.unwrap();
+async fn insert(records: &Vec<CacheRecord>, pool: &PgPool) -> Result<()> {
+    let mut tx = pool.begin().await?;
 
     for rec in records {
         sqlx::query_as!(
@@ -192,14 +183,14 @@ async fn insert(records: &Vec<CacheRecord>, pool: &PgPool) {
             rec.log.minutes_played
         )
         .execute(&mut *tx)
-        .await
-        .expect("Error executing insertion");
+        .await?;
     }
 
-    tx.commit().await.expect("Error committing batch");
+    tx.commit().await?;
+    Ok(())
 }
 
-async fn collect_batch(consumer: &StreamConsumer) -> Vec<BorrowedMessage<'_>> {
+async fn collect_batch(consumer: &StreamConsumer) -> Result<Vec<BorrowedMessage<'_>>> {
     const MAX_BATCH_SIZE: usize = 100;
     const MAX_WAIT: Duration = Duration::from_millis(100);
 
@@ -207,23 +198,12 @@ async fn collect_batch(consumer: &StreamConsumer) -> Vec<BorrowedMessage<'_>> {
     let start = tokio::time::Instant::now();
 
     while batch.len() < MAX_BATCH_SIZE {
-        match consumer.recv().await {
-            Ok(msg) => {
-                batch.push(msg);
-                if batch.len() >= MAX_BATCH_SIZE {
-                    break;
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Ошибка при recv: {}", e);
-                break;
-            }
-        }
-
-        if start.elapsed() >= MAX_WAIT {
+        let msg = consumer.recv().await?;
+        batch.push(msg);
+        if batch.len() >= MAX_BATCH_SIZE || start.elapsed() >= MAX_WAIT {
             break;
         }
     }
 
-    batch
+    Ok(batch)
 }

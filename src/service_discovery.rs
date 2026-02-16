@@ -1,4 +1,5 @@
-use crate::{Config, ServiceList};
+use crate::errors::AppError;
+use crate::{utils::Result, Config, ServiceList};
 use sqlx::PgPool;
 use std::time::Duration;
 use time::OffsetDateTime;
@@ -10,29 +11,32 @@ pub async fn service_discovery(
     config: Config,
     service_list: ServiceList,
     pool: PgPool,
-) {
+) -> Result<()> {
     tracing::info!("Service discovery worker started");
 
-    let self_url = config
-        .service_discovery_self_url
-        .as_deref()
-        .expect("No self url provided");
+    let self_url = config.service_discovery_self_url.as_deref();
+
+    let Some(self_url) = self_url else {
+        return Err(AppError::Custom("No self-url provided".into()));
+    };
 
     loop {
         tokio::select! {
             _ = token.cancelled() => {
-                remove_expired_records(&pool, self_url).await;
+                remove_expired_records(&pool, self_url).await?;
                 tracing::info!("Service discovery worker shutting down");
                 break;
             }
             _ = sleep(Duration::from_secs(1)) => {
-                sync(&pool, self_url, &service_list).await;
+                sync(&pool, self_url, &service_list).await?;
             }
         }
     }
+
+    Ok(())
 }
 
-async fn remove_expired_records(pool: &PgPool, self_url: &str) {
+async fn remove_expired_records(pool: &PgPool, self_url: &str) -> Result<()> {
     const DURATION: Duration = Duration::from_secs(5);
 
     let cutoff_time = OffsetDateTime::now_utc() - DURATION;
@@ -42,17 +46,19 @@ async fn remove_expired_records(pool: &PgPool, self_url: &str) {
         cutoff_time
     )
     .execute(pool)
-    .await
-    .expect("Error executing database table for service discovery");
+    .await?;
+
+    Ok(())
 }
 
-async fn sync(pool: &PgPool, self_url: &str, service_list: &ServiceList) {
-    heartbeat(pool, self_url).await;
-    let urls = get_active_urls(pool, self_url).await;
+async fn sync(pool: &PgPool, self_url: &str, service_list: &ServiceList) -> Result<()> {
+    heartbeat(pool, self_url).await?;
+    let urls = get_active_urls(pool, self_url).await?;
     work_on_state(urls, service_list).await;
+    Ok(())
 }
 
-async fn heartbeat(pool: &PgPool, self_url: &str) {
+async fn heartbeat(pool: &PgPool, self_url: &str) -> Result<()> {
     let now = OffsetDateTime::now_utc();
 
     sqlx::query_as!(
@@ -67,11 +73,12 @@ async fn heartbeat(pool: &PgPool, self_url: &str) {
         now
     )
     .execute(pool)
-    .await
-    .expect("Error executing database table for service discovery");
+    .await?;
+
+    Ok(())
 }
 
-async fn get_active_urls(pool: &PgPool, self_url: &str) -> Vec<String> {
+async fn get_active_urls(pool: &PgPool, self_url: &str) -> Result<Vec<String>> {
     const DURATION: Duration = Duration::from_secs(5);
     let cutoff_time = OffsetDateTime::now_utc() - DURATION;
 
@@ -87,10 +94,9 @@ async fn get_active_urls(pool: &PgPool, self_url: &str) -> Vec<String> {
         cutoff_time
     )
     .fetch_all(pool)
-    .await
-    .expect("query failed");
+    .await?;
 
-    rows.into_iter().map(|r| r.url).collect()
+    Ok(rows.into_iter().map(|r| r.url).collect())
 }
 
 async fn work_on_state(state: Vec<String>, service_list: &ServiceList) {

@@ -28,7 +28,12 @@ pub async fn log(
 
     let record = CacheRecord::new(log);
 
-    let json = serde_json::to_string(&record).unwrap();
+    let Ok(json) = serde_json::to_string(&record) else {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            String::from("Internal Server Error"),
+        ));
+    };
 
     let headers = OwnedHeaders::new().insert(Header {
         key: HEADER_SENDER,
