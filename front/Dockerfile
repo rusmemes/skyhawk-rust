@@ -27,7 +27,15 @@ RUN apt-get update \
  && apt-get install -y ca-certificates bash \
  && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/front /usr/local/bin/front
+RUN useradd --system --create-home --uid 1001 appuser
+
+WORKDIR /app
+
+COPY --from=builder --chown=appuser:appuser \
+    /app/target/release/front \
+    /usr/local/bin/front
+
+USER appuser
 
 EXPOSE 8080
 HEALTHCHECK --interval=5s --timeout=2s --retries=3 CMD bash -c 'echo > /dev/tcp/127.0.0.1/8080' || exit 1
