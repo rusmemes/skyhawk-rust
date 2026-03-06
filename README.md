@@ -1,193 +1,299 @@
-Skyhawk test task
-============
+# Skyhawk (Rust)
 
-## To run
+Skyhawk is a distributed statistics processing service written in Rust.
+
+It ingests NBA-like game log events, processes them through Kafka,
+stores them in PostgreSQL, and serves aggregated statistics through a
+REST API.
+
+The system is designed as a scalable microservice architecture with
+stateless API nodes, stream processing via Kafka, and persistent
+storage.
+
+------------------------------------------------------------------------
+
+## Architecture Overview
+
+The system is composed of several services running in containers:
+
+                 +-------------+
+                 |  Load Balancer |
+                 +-------+-----+
+                         |
+               +---------+---------+
+               |                   |
+            +--v---+           +---v--+
+            | Front |  ...     | Front |
+            +--+---+           +---+--+
+               |                   |
+               +---------+---------+
+                         |
+                       Kafka
+                         |
+                   +-----+-----+
+                   |           |
+                +--v--+    +---v---+
+                | Back |    | Back |
+                +--+---+    +---+--+
+                   |
+                PostgreSQL
+
+------------------------------------------------------------------------
+
+## Components
+
+### Front Service
+
+Responsible for:
+
+-   Accepting incoming API requests
+-   Validating payloads
+-   Writing log records to Kafka
+-   Maintaining an in‑memory cache of recent records
+-   Serving statistics requests
+
+Each front instance:
+
+-   produces messages to Kafka
+-   consumes the same Kafka topic to stay in sync with other instances
+
+Implementation: `src/bin/front.rs`
+
+------------------------------------------------------------------------
+
+### Back Service
+
+Responsible for:
+
+-   Consuming log events from Kafka
+-   Persisting them into PostgreSQL
+-   Publishing cleanup signals to Kafka once records are stored
+
+Implementation: `src/bin/back.rs`
+
+------------------------------------------------------------------------
+
+### Kafka
+
+Kafka acts as the main event streaming backbone of the system.
+
+Two topics are used:
+
+**main**\
+Contains all incoming log events.
+
+**removal**\
+Contains markers indicating which events have already been persisted and
+can be removed from front-node memory.
+
+------------------------------------------------------------------------
+
+### PostgreSQL
+
+Stores all historical statistics data.
+
+Database schema is created via SQL migrations located in:
+
+    migrations/
+
+------------------------------------------------------------------------
+
+### Load Balancer
+
+An Nginx container distributes requests across multiple Front nodes.
+
+Configuration:
+
+    lb/nginx.conf
+
+------------------------------------------------------------------------
+
+## Data Flow
+
+1.  Client sends `/log` request
+2.  Front node validates the request
+3.  Front node generates a unique timestamp pair
+4.  Event is published to **Kafka main topic**
+5.  All Front nodes consume the event and store it in memory
+6.  Back nodes consume events and persist them into PostgreSQL
+7.  Back nodes publish a marker to **Kafka removal topic**
+8.  Front nodes receive the marker and remove old events from memory
+
+This ensures:
+
+-   consistency across front nodes
+-   idempotent processing
+-   safe recovery after failures
+
+------------------------------------------------------------------------
+
+## Running the System
+
+The easiest way to run the full stack is with Docker.
 
     docker-compose up -d
 
-Then load balancer will start listening port 8080 on localhost
+This starts:
 
-## Containers
+-   PostgreSQL
+-   Zookeeper
+-   Kafka
+-   Front service
+-   Back service
+-   Nginx load balancer
 
-* Postgres database
-* Zookeeper
-* Kafka
-* Load balancer
-* Front
-* Back
+The API will be available at:
 
-## Front container
+    http://localhost:8080
 
-The engine providing an api to handle /log and /stat requests. See below for the both endpoints' description.
+------------------------------------------------------------------------
 
-## Back container
+## API
 
-The engine which works on stat data: it writes all the incoming log records to the database.
+### POST /log
 
-## Front API
+Registers a game log event.
 
-### /log
+Example request:
 
-Consumers json requests fit to schema
-
-~~~json
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "season": {
-      "type": "string"
-    },
-    "team": {
-      "type": "string"
-    },
-    "player": {
-      "type": "string"
-    },
-    "points": {
-      "type": "integer"
-    },
-    "rebounds": {
-      "type": "integer"
-    },
-    "assists": {
-      "type": "integer"
-    },
-    "steals": {
-      "type": "integer"
-    },
-    "blocks": {
-      "type": "integer"
-    },
-    "fouls": {
-      "type": "integer"
-    },
-    "turnovers": {
-      "type": "integer"
-    },
-    "minutesPlayed": {
-      "type": "number"
-    }
-  },
-  "required": [
-    "season",
-    "team",
-    "player"
-  ]
-}
-~~~
-
-Example request
-
-~~~json
+``` json
 {
   "season": "season3",
   "team": "team3",
   "player": "player3",
-  "steals": 3,
-  "minutesPlayed": 3.0
+  "points": 20,
+  "rebounds": 10,
+  "assists": 5,
+  "minutesPlayed": 32.5
 }
-~~~
+```
 
-### /stat
+Fields include:
 
-Consumers json requests fit to schema
+-   season
+-   team
+-   player
+-   points
+-   rebounds
+-   assists
+-   steals
+-   blocks
+-   fouls
+-   turnovers
+-   minutesPlayed
 
-~~~json
+Only `season`, `team`, and `player` are required.
+
+------------------------------------------------------------------------
+
+### POST /stat
+
+Returns aggregated statistics.
+
+Example request:
+
+``` json
 {
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "season": {
-      "type": "string"
-    },
-    "per": {
-      "type": "string"
-    },
-    "values": {
-      "type": "array",
-      "items": [
-        {
-          "type": "string"
-        }
-      ]
-    }
-  },
-  "required": [
-    "season",
-    "per",
-    "values"
-  ]
-}
-~~~
-
-Example request
-
-~~~json
-{
-  "season": "season",
+  "season": "season3",
   "per": "player",
   "values": [
-    "steals",
-    "blocks",
-    "fouls",
-    "minutesPlayed",
     "points",
     "rebounds",
-    "assists",
-    "turnovers"
+    "assists"
   ]
 }
-~~~
+```
 
-The list of possible aggregation keys:
+Parameters:
 
-* team
-* player
+  Field    Description
+  -------- --------------------------------------
+  season   Season identifier
+  per      Aggregation key (`team` or `player`)
+  values   Metrics to aggregate
 
 Example response:
 
-~~~json
+``` json
 {
   "PLAYER1": {
-    "minutesPlayed": 3.0
+    "points": 20,
+    "rebounds": 10
   },
   "PLAYER2": {
-    "minutesPlayed": 4.0
+    "points": 18,
+    "rebounds": 7
   }
 }
-~~~
+```
 
-## How it works
+------------------------------------------------------------------------
 
-The one of the available front containers receives a request on /log endpoint, validates the payload,
-generates timestamps pair to make the combination of season, team, player and both generated timestamp unique across all
-requests, the uniqueness is important to store the received log record correctly in the database and in memory.
+## Technology Stack
 
-If the validation process succeed, front container sends the log record and generated timestamps pair to kafka, then
-stores the same info in the local memory. In case when an attempt to write to kafka fails nothing is being stored in
-memory and the 503 status code is being returned also.
+-   Rust
+-   Axum
+-   Tokio
+-   Kafka (rdkafka)
+-   PostgreSQL
+-   SQLx
+-   Docker
+-   Nginx
 
-Front container writes all incoming info to the kafka topic, lets call it main, and also listens this topic with its
-own randomly generated group id to get also the records which are being written to the main topic by other front
-containers.
+------------------------------------------------------------------------
 
-So mainly we have all incoming requests written to the main topic and stored in the memory of all existing front
-containers.
+## Project Structure
 
-Then the back containers start playing their roles.
-All they do is reading main topic with the same static group id and writing all the read data to the database.
-After the next batch of records is saved in the database, back container send one record with the maximum timestamp pair
-per kafka key to another topic, lets call it removal.
+    src/
+     ├ bin/
+     │  ├ front.rs
+     │  └ back.rs
+     ├ handlers/
+     │  ├ log.rs
+     │  ├ stat.rs
+     │  └ copy.rs
+     ├ domain.rs
+     ├ service_discovery.rs
+     ├ runtime_store.rs
+     └ utils.rs
 
-Front container read the removal topic also, each front container does it with its own unique group id to read all
-the records for all keys. When some record is read from the removal topic, front container removes all the records with
-the same combinations of season + team + player from its own memory, but it does it only for record with timestamps
-lower of equal to the timestamp of the record read from the removal topic.
+    migrations/
+    front/
+    back/
+    lb/
+    docker-compose.yaml
 
-When a stat request arrives to /stat endpoint, front container grabs all the available data from the database,
-from its own memory and from the memory of other existing containers, merges the data and calculates statistics
-according to the provided season, aggregation key and values.
+------------------------------------------------------------------------
 
-All the dataflows processing in the system is idempotent, there will be no problems if case of any kafka or database
-connection issues.
+## Design Characteristics
+
+Skyhawk focuses on:
+
+-   horizontal scalability
+-   event-driven architecture
+-   idempotent data processing
+-   fault tolerance
+-   low-latency statistics queries
+
+The combination of **Kafka + in-memory caching + persistent storage**
+allows the system to handle high write throughput while still providing
+fast query responses.
+
+------------------------------------------------------------------------
+
+## Development
+
+Build the project:
+
+    cargo build
+
+Run services locally:
+
+    cargo run --bin front
+    cargo run --bin back
+
+------------------------------------------------------------------------
+
+## License
+
+MIT
