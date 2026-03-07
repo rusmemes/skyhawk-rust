@@ -56,7 +56,7 @@ fn process_msg(msg: BorrowedMessage, runtime_store: &RuntimeStore, config: &Conf
             .and_then(|h| h.value)
             .and_then(|v| std::str::from_utf8(v).ok());
 
-        if sender != Some(config.instance_id.as_str()) {
+        if sender.is_some() && sender != Some(config.instance_id.as_str()) {
             process(msg.payload(), |record| runtime_store.log(record))?;
         }
     } else if msg.topic() == config.kafka_topic_removal.as_str() {
