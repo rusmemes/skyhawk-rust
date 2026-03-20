@@ -17,7 +17,6 @@ pub mod kafka_front_worker;
 pub mod runtime_store;
 pub mod service_discovery;
 pub mod utils;
-
 pub mod errors;
 
 pub const HEADER_SENDER: &str = "sender";
