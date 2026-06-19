@@ -11,8 +11,8 @@ use std::sync::Arc;
 use tokio::task::JoinHandle;
 
 pub async fn stat(
-    State(runtime_store): State<RuntimeStore>,
-    State(service_list): State<ServiceList>,
+    State(runtime_store): State<Arc<RuntimeStore>>,
+    State(service_list): State<Arc<ServiceList>>,
     State(pool): State<PgPool>,
     State(http): State<Client>,
     Json(stat_request): Json<StatRequest>,
@@ -44,17 +44,17 @@ pub async fn stat(
 }
 
 async fn process_request(
-    runtime_store: RuntimeStore,
+    runtime_store: Arc<RuntimeStore>,
     pool: PgPool,
     http: Client,
-    service_list: ServiceList,
+    service_list: Arc<ServiceList>,
     request: StatRequest,
 ) -> HashMap<String, HashMap<StatValue, f64>> {
 
     let season_uppercased = request.season.to_uppercase();
     let sync_state_handle = tokio::spawn(sync_state(
         runtime_store.clone(),
-        service_list,
+        service_list.clone(),
         http,
         season_uppercased.clone(),
     ));
@@ -155,12 +155,12 @@ fn convert_to_response(
 }
 
 async fn sync_state(
-    runtime_store: RuntimeStore,
-    service_list: ServiceList,
+    runtime_store: Arc<RuntimeStore>,
+    service_list: Arc<ServiceList>,
     http: Client,
     season: String,
 ) {
-    let vec = call_another_front_instances(service_list, http, season, runtime_store).await;
+    let vec = call_another_front_instances(service_list.as_ref(), http, season, runtime_store.as_ref()).await;
 
     for join_handle in vec {
         match join_handle.await {
@@ -173,10 +173,10 @@ async fn sync_state(
 }
 
 async fn call_another_front_instances(
-    service_list: ServiceList,
+    service_list: &ServiceList,
     http: Client,
     season: String,
-    runtime_store: RuntimeStore,
+    runtime_store: &RuntimeStore,
 ) -> Vec<JoinHandle<()>> {
     let mut vec = Vec::new();
 

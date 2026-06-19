@@ -21,15 +21,14 @@ pub mod errors;
 
 pub const HEADER_SENDER: &str = "sender";
 
-#[derive(Clone)]
 pub struct ServiceList {
-    pub list: Arc<RwLock<Vec<String>>>,
+    pub list: RwLock<Vec<String>>,
 }
 
 impl ServiceList {
     pub fn new() -> Self {
         Self {
-            list: Arc::new(RwLock::new(Vec::new())),
+            list: RwLock::new(Vec::new()),
         }
     }
 }
@@ -37,20 +36,20 @@ impl ServiceList {
 #[derive(Clone)]
 pub struct FrontState {
     pub producer: FutureProducer,
-    pub config: Config,
-    pub runtime_store: RuntimeStore,
-    pub service_list: ServiceList,
+    pub config: Arc<Config>,
+    pub runtime_store: Arc<RuntimeStore>,
+    pub service_list: Arc<ServiceList>,
     pub http: Client,
     pub pool: PgPool,
 }
 
-impl FromRef<FrontState> for RuntimeStore {
+impl FromRef<FrontState> for Arc<RuntimeStore> {
     fn from_ref(input: &FrontState) -> Self {
         input.runtime_store.clone()
     }
 }
 
-impl FromRef<FrontState> for ServiceList {
+impl FromRef<FrontState> for Arc<ServiceList> {
     fn from_ref(input: &FrontState) -> Self {
         input.service_list.clone()
     }
@@ -74,7 +73,7 @@ impl FromRef<FrontState> for FutureProducer {
     }
 }
 
-impl FromRef<FrontState> for Config {
+impl FromRef<FrontState> for Arc<Config> {
     fn from_ref(input: &FrontState) -> Self {
         input.config.clone()
     }
@@ -83,7 +82,7 @@ impl FromRef<FrontState> for Config {
 impl FrontState {
     pub fn new(pool: PgPool, config: Config) -> Result<Self> {
         let producer = ClientConfig::new()
-            .set("bootstrap.servers", config.kafka_bootstrap_servers.as_ref())
+            .set("bootstrap.servers", config.kafka_bootstrap_servers.clone())
             .create();
 
         let Ok(producer) = producer else {
@@ -92,9 +91,9 @@ impl FrontState {
 
         Ok(FrontState {
             producer,
-            config,
-            runtime_store: RuntimeStore::new(),
-            service_list: ServiceList::new(),
+            config: Arc::new(config),
+            runtime_store: Arc::new(RuntimeStore::new()),
+            service_list: Arc::new(ServiceList::new()),
             http: Client::new(),
             pool,
         })
@@ -103,37 +102,33 @@ impl FrontState {
 
 #[derive(Clone)]
 pub struct Config {
-    pub kafka_topic_main: Arc<String>,
-    pub kafka_topic_removal: Arc<String>,
-    pub kafka_group_id: Arc<String>,
-    pub kafka_bootstrap_servers: Arc<String>,
-    pub database_url: Arc<String>,
-    pub instance_id: Arc<String>,
-    pub service_discovery_self_url: Arc<Option<String>>,
+    pub kafka_topic_main: String,
+    pub kafka_topic_removal: String,
+    pub kafka_group_id: String,
+    pub kafka_bootstrap_servers: String,
+    pub database_url: String,
+    pub instance_id: String,
+    pub service_discovery_self_url: Option<String>,
 }
 
 impl Config {
     pub fn new() -> Result<Self> {
         Ok(Self {
-            kafka_topic_main: Arc::new(
+            kafka_topic_main: 
                 env::var("KAFKA_TOPIC_MAIN")
                     .map_err(|_| AppError::Custom("KAFKA_TOPIC_MAIN not found".into()))?,
-            ),
-            kafka_topic_removal: Arc::new(
+            kafka_topic_removal: 
                 env::var("KAFKA_TOPIC_REMOVAL")
                     .map_err(|_| AppError::Custom("KAFKA_TOPIC_REMOVAL must be set".into()))?,
-            ),
-            kafka_group_id: Arc::new(get_kafka_group_id()?),
-            kafka_bootstrap_servers: Arc::new(
+            kafka_group_id: get_kafka_group_id()?,
+            kafka_bootstrap_servers: 
                 env::var("KAFKA_BOOTSTRAP_SERVERS")
                     .map_err(|_| AppError::Custom("KAFKA_BOOTSTRAP_SERVERS must be set".into()))?,
-            ),
-            instance_id: Arc::new(Uuid::new_v4().to_string()),
-            database_url: Arc::new(
+            instance_id: Uuid::new_v4().to_string(),
+            database_url: 
                 env::var("DATABASE_URL")
                     .map_err(|_| AppError::Custom("DATABASE_URL must be set".into()))?,
-            ),
-            service_discovery_self_url: Arc::new(get_service_discovery_url()?),
+            service_discovery_self_url: get_service_discovery_url()?
         })
     }
 }

@@ -6,7 +6,7 @@ use axum::Json;
 use std::sync::Arc;
 
 pub async fn copy(
-    State(runtime_store): State<RuntimeStore>,
+    State(runtime_store): State<Arc<RuntimeStore>>,
     season: String,
 ) -> Result<Json<Vec<Arc<CacheRecord>>>, StatusCode> {
     let vec: Vec<Arc<CacheRecord>> = runtime_store.view(&season.to_uppercase());

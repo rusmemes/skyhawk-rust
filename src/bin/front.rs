@@ -9,6 +9,7 @@ use skyhawk_rust::service_discovery::service_discovery;
 use skyhawk_rust::utils::{join_tasks, shutdown_signal};
 use skyhawk_rust::{Config, FrontState, ServiceList};
 use sqlx::PgPool;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
@@ -57,9 +58,9 @@ async fn main() -> Result<(), AppError> {
 
 async fn spawn_background_tasks(
     token: CancellationToken,
-    runtime_store: RuntimeStore,
-    config: Config,
-    service_list: ServiceList,
+    runtime_store: Arc<RuntimeStore>,
+    config: Arc<Config>,
+    service_list: Arc<ServiceList>,
     pool: PgPool,
 ) {
     let mut handles = Vec::new();

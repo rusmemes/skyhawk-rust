@@ -1,6 +1,7 @@
 use crate::errors::AppError;
 use crate::{utils::Result, Config, ServiceList};
 use sqlx::PgPool;
+use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::time::sleep;
@@ -8,8 +9,8 @@ use tokio_util::sync::CancellationToken;
 
 pub async fn service_discovery(
     token: CancellationToken,
-    config: Config,
-    service_list: ServiceList,
+    config: Arc<Config>,
+    service_list: Arc<ServiceList>,
     pool: PgPool,
 ) -> Result<()> {
     tracing::info!("Service discovery worker started");

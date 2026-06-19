@@ -9,8 +9,8 @@ use tokio_util::sync::CancellationToken;
 
 pub async fn kafka_front_worker(
     token: CancellationToken,
-    config: Config,
-    runtime_store: RuntimeStore,
+    config: Arc<Config>,
+    runtime_store: Arc<RuntimeStore>,
 ) -> Result<()> {
     tracing::info!("Kafka worker started");
 

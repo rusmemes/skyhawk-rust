@@ -15,13 +15,13 @@ type Cache = DashMap<Season, Arc<TeamMap>>;
 
 #[derive(Clone)]
 pub struct RuntimeStore {
-    cache: Arc<Cache>,
+    cache: Cache,
 }
 
 impl RuntimeStore {
     pub fn new() -> Self {
         Self {
-            cache: Arc::new(DashMap::new()),
+            cache: DashMap::new(),
         }
     }
 

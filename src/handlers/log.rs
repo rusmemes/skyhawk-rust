@@ -6,12 +6,13 @@ use axum::http::StatusCode;
 use axum::Json;
 use rdkafka::message::{Header, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub async fn log(
     State(producer): State<FutureProducer>,
-    State(config): State<Config>,
-    State(runtime_store): State<RuntimeStore>,
+    State(config): State<Arc<Config>>,
+    State(runtime_store): State<Arc<RuntimeStore>>,
     Json(log): Json<Log>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let errors = log.validate();
