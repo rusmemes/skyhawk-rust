@@ -60,6 +60,7 @@ services:
     restart: always
     depends_on:
       - postgres
+      - zookeeper
       - kafka
     networks:
       - skyhawk
@@ -92,6 +93,7 @@ services:
     restart: always
     depends_on:
       - postgres
+      - zookeeper
       - kafka
       - back
       - lb
