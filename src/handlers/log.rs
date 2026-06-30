@@ -84,17 +84,12 @@ impl Log {
         Self::check_number(self.rebounds, &mut errors, "Rebounds", &mut empty);
         Self::check_number(self.steals, &mut errors, "Steals", &mut empty);
         Self::check_number(self.turnovers, &mut errors, "Turnovers", &mut empty);
-
-        if let Some(value) = self.minutes_played {
-            if value > 0.0 {
-                empty = false;
-            } else if value < 0.0 {
-                errors.push(String::from(format!(
-                    "{} value must a positive value",
-                    "Minutes Played"
-                )));
-            }
-        }
+        Self::check_number(
+            self.minutes_played,
+            &mut errors,
+            "Minutes Played",
+            &mut empty,
+        );
 
         if empty {
             errors.push(String::from("The Request contains no values"))
@@ -108,11 +103,14 @@ impl Log {
         }
     }
 
-    fn check_number(opt: Option<i32>, errors: &mut Vec<String>, label: &str, empty: &mut bool) {
+    fn check_number<T>(opt: Option<T>, errors: &mut Vec<String>, label: &str, empty: &mut bool)
+    where
+        T: PartialOrd + Default,
+    {
         if let Some(value) = opt {
-            if value > 0 {
+            if value > T::default() {
                 *empty = false;
-            } else if value < 0 {
+            } else if value < T::default() {
                 errors.push(String::from(format!(
                     "{} value must a positive value",
                     label
