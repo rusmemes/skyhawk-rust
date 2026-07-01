@@ -1,6 +1,7 @@
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::Router;
+use futures::stream::{FuturesUnordered, StreamExt};
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::message::BorrowedMessage;
 use rdkafka::producer::{FutureProducer, FutureRecord};
@@ -85,6 +86,7 @@ async fn iteration(
     config: &Config,
     batch: Vec<BorrowedMessage<'_>>,
 ) -> Result<()> {
+
     if batch.is_empty() {
         return Ok(());
     }
@@ -97,9 +99,13 @@ async fn iteration(
             map
         });
 
+    let futures = FuturesUnordered::new();
+
     for (key, v) in map {
-        let _ = process_messages_of_the_same_key(pool, producer, &config, key, v).await?;
+        futures.push(process_messages_of_the_same_key(pool, producer, &config, key, v));
     }
+
+    futures.collect::<Vec<_>>().await;
 
     if let Some(last) = batch.last() {
         consumer.commit_message(last, CommitMode::Async)?;
