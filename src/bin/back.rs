@@ -64,14 +64,18 @@ async fn run_kafka_worker(token: CancellationToken) -> Result<()> {
 
     consumer.subscribe(&[&config.kafka_topic_main])?;
 
+    let mut batch = Vec::with_capacity(MAX_BATCH_SIZE);
+
     loop {
         tokio::select! {
             _ = token.cancelled() => {
                 tracing::info!("Kafka removal reading worker shutting down");
                 break;
             }
-            batch = collect_batch(&consumer) => {
-                iteration(&pool, &consumer, &producer, &config, batch?).await?;
+            res = collect_batch(&consumer, &mut batch) => {
+                res?;
+                iteration(&pool, &consumer, &producer, &config, &batch).await?;
+                batch.clear();
             }
         }
     }
@@ -79,12 +83,15 @@ async fn run_kafka_worker(token: CancellationToken) -> Result<()> {
     Ok(())
 }
 
+const MAX_BATCH_SIZE: usize = 100;
+const MAX_WAIT: Duration = Duration::from_millis(100);
+
 async fn iteration(
     pool: &PgPool,
     consumer: &StreamConsumer,
     producer: &FutureProducer,
     config: &Config,
-    batch: Vec<BorrowedMessage<'_>>,
+    batch: &Vec<BorrowedMessage<'_>>,
 ) -> Result<()> {
 
     if batch.is_empty() {
@@ -196,11 +203,8 @@ async fn insert(records: &Vec<CacheRecord>, pool: &PgPool) -> Result<()> {
     Ok(())
 }
 
-async fn collect_batch(consumer: &StreamConsumer) -> Result<Vec<BorrowedMessage<'_>>> {
-    const MAX_BATCH_SIZE: usize = 100;
-    const MAX_WAIT: Duration = Duration::from_millis(100);
+async fn collect_batch<'a>(consumer: &'a StreamConsumer, batch: &mut Vec<BorrowedMessage<'a>>) -> Result<()> {
 
-    let mut batch = Vec::with_capacity(MAX_BATCH_SIZE);
     let start = tokio::time::Instant::now();
 
     while batch.len() < MAX_BATCH_SIZE {
@@ -211,5 +215,5 @@ async fn collect_batch(consumer: &StreamConsumer) -> Result<Vec<BorrowedMessage<
         }
     }
 
-    Ok(batch)
+    Ok(())
 }
