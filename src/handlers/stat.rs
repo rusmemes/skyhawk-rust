@@ -1,9 +1,9 @@
+use crate::ServiceList;
 use crate::domain::{CacheRecord, StatPer, StatRequest, StatValue};
 use crate::runtime_store::RuntimeStore;
-use crate::ServiceList;
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 use reqwest::Client;
 use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
@@ -17,6 +17,7 @@ pub async fn stat(
     State(http): State<Client>,
     Json(stat_request): Json<StatRequest>,
 ) -> Result<Json<HashMap<String, HashMap<StatValue, f64>>>, (StatusCode, String)> {
+
     if stat_request.season.is_empty()
         || stat_request.season.chars().all(char::is_whitespace)
         || stat_request.values.is_empty()
@@ -50,7 +51,6 @@ async fn process_request(
     service_list: Arc<ServiceList>,
     request: StatRequest,
 ) -> HashMap<String, HashMap<StatValue, f64>> {
-
     let season_uppercased = request.season.to_uppercase();
     let sync_state_handle = tokio::spawn(sync_state(
         runtime_store.clone(),
@@ -160,7 +160,9 @@ async fn sync_state(
     http: Client,
     season: String,
 ) {
-    let vec = call_another_front_instances(service_list.as_ref(), http, season, runtime_store.as_ref()).await;
+    let vec =
+        call_another_front_instances(service_list.as_ref(), http, season, runtime_store.as_ref())
+            .await;
 
     for join_handle in vec {
         match join_handle.await {
@@ -206,32 +208,23 @@ async fn call_front_instance(
         .send()
         .await;
 
-    if let Err(error) = resp {
-        tracing::error!(error = %error, "Error occurred sending request");
-        return;
-    }
-
-    let resp = resp.unwrap();
-
-    match resp.status() {
-        StatusCode::OK => {
-            let data = resp.json::<Vec<CacheRecord>>().await;
-            match data {
-                Ok(vec) => {
-                    for record in vec {
-                        runtime_store.log(record);
+    match resp {
+        Ok(resp) => match resp.status() {
+            StatusCode::OK => {
+                match resp.json::<Vec<CacheRecord>>().await {
+                    Ok(vec) => {
+                        for record in vec {
+                            runtime_store.log(record);
+                        }
+                    }
+                    Err(error) => {
+                        tracing::error!(error = %error, "Error occurred parsing response")
                     }
                 }
-                Err(error) => {
-                    tracing::error!(error = %error, "Error occurred parsing response");
-                }
             }
-        }
-        StatusCode::NO_CONTENT => {}
-        status => {
-            let error = format!("Unexpected status: {:?}", status);
-            let x = &error;
-            tracing::info!(x);
-        }
+            StatusCode::NO_CONTENT => {}
+            status => tracing::info!("Unexpected status: {:?}", status),
+        },
+        Err(error) => tracing::error!(error = %error, "Error occurred sending request"),
     }
 }
