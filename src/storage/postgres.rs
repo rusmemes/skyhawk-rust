@@ -1,5 +1,5 @@
 use crate::domain::{CacheRecord, StatValue};
-use sqlx::PgPool;
+use sqlx::{AssertSqlSafe, PgPool};
 
 pub async fn load_statistics(
     pool: &PgPool,
@@ -8,7 +8,10 @@ pub async fn load_statistics(
 ) -> Result<Vec<CacheRecord>, sqlx::Error> {
     let sql = statistics_query(values);
 
-    sqlx::query_as(&sql).bind(season).fetch_all(pool).await
+    sqlx::query_as(AssertSqlSafe(sql))
+        .bind(season)
+        .fetch_all(pool)
+        .await
 }
 
 fn statistics_query(values: &[StatValue]) -> String {

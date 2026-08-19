@@ -2,7 +2,7 @@ name: skyhawk
 services:
   postgres:
     container_name: postgres
-    image: postgres:15.3-alpine
+    image: postgres:15.19-alpine
     environment:
       POSTGRES_DB: skyhawk
       POSTGRES_USER: postgres
@@ -16,7 +16,7 @@ services:
 
   zookeeper:
     container_name: zookeeper
-    image: confluentinc/cp-zookeeper:7.4.3
+    image: confluentinc/cp-zookeeper:7.8.10
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -27,7 +27,7 @@ services:
 
   kafka:
     container_name: kafka
-    image: confluentinc/cp-kafka:7.4.3
+    image: confluentinc/cp-kafka:7.8.10
     depends_on:
       - zookeeper
     ports:
@@ -43,7 +43,7 @@ services:
       - skyhawk
 
   kafka-init:
-    image: confluentinc/cp-kafka:7.4.3
+    image: confluentinc/cp-kafka:7.8.10
     depends_on:
       - kafka
     command:
