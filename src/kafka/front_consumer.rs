@@ -1,13 +1,16 @@
 use crate::domain::CacheRecord;
-use crate::runtime_store::RuntimeStore;
-use crate::{utils::Result, Config, HEADER_SENDER};
+use crate::kafka::topic_is_not_available;
+use crate::shutdown::Result;
+use crate::storage::runtime::RuntimeStore;
+use crate::{Config, HEADER_SENDER};
 use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::message::{BorrowedMessage, Headers};
 use rdkafka::{ClientConfig, Message};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-pub async fn kafka_front_worker(
+pub async fn run(
     token: CancellationToken,
     config: Arc<Config>,
     runtime_store: Arc<RuntimeStore>,
@@ -36,7 +39,14 @@ pub async fn kafka_front_worker(
                 tracing::info!("Kafka worker is shutting down");
                 break;
             }
-            result = consumer.recv() => process_msg(result?, &runtime_store, &config)?
+            result = consumer.recv() => match result {
+                Ok(message) => process_msg(message, &runtime_store, &config)?,
+                Err(error) if topic_is_not_available(&error) => {
+                    tracing::warn!(%error, "Kafka topics are not available yet; retrying");
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                Err(error) => return Err(error.into()),
+            }
         }
     }
 
@@ -75,4 +85,54 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{Log, TimeKey};
+    use std::cell::RefCell;
+
+    fn record() -> CacheRecord {
+        CacheRecord {
+            time_key: TimeKey(1, 2),
+            log: Log {
+                season: "S".into(),
+                team: "T".into(),
+                player: "P".into(),
+                points: Some(9),
+                rebounds: None,
+                assists: None,
+                steals: None,
+                blocks: None,
+                fouls: None,
+                turnovers: None,
+                minutes_played: None,
+            },
+        }
+    }
+
+    #[test]
+    fn process_deserializes_payload_and_calls_processor() {
+        let json = serde_json::to_vec(&record()).unwrap();
+        let captured = RefCell::new(None);
+
+        process(Some(&json), |record| {
+            captured.replace(Some(record));
+        })
+        .unwrap();
+
+        assert_eq!(captured.borrow().as_ref().unwrap().log.points, Some(9));
+    }
+
+    #[test]
+    fn process_ignores_missing_payload() {
+        process(None, |_| panic!("processor must not be called")).unwrap();
+    }
+
+    #[test]
+    fn process_rejects_invalid_json() {
+        let result = process(Some(b"not-json"), |_| {});
+        assert!(result.is_err());
+    }
 }

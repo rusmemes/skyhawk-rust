@@ -1,12 +1,12 @@
-use axum::routing::{post, Router};
-use skyhawk_rust::errors::AppError;
-use skyhawk_rust::handlers::copy::copy;
-use skyhawk_rust::handlers::log::log;
-use skyhawk_rust::handlers::stat::stat;
-use skyhawk_rust::kafka_front_worker::kafka_front_worker;
-use skyhawk_rust::runtime_store::RuntimeStore;
-use skyhawk_rust::service_discovery::service_discovery;
-use skyhawk_rust::utils::{join_tasks, shutdown_signal};
+use axum::routing::{Router, post};
+use skyhawk_rust::AppError;
+use skyhawk_rust::api::log::log;
+use skyhawk_rust::api::stat::stat;
+use skyhawk_rust::api::stat_copy::copy;
+use skyhawk_rust::discovery::service_discovery;
+use skyhawk_rust::kafka::front_consumer;
+use skyhawk_rust::shutdown::{join_tasks, shutdown_signal};
+use skyhawk_rust::storage::runtime::RuntimeStore;
 use skyhawk_rust::{Config, FrontState, ServiceList};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -72,7 +72,7 @@ async fn spawn_background_tasks(
         pool,
     )));
 
-    handles.push(tokio::spawn(kafka_front_worker(
+    handles.push(tokio::spawn(front_consumer::run(
         token.child_token(),
         config,
         runtime_store,

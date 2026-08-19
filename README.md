@@ -1,162 +1,45 @@
 # Skyhawk (Rust)
 
-Skyhawk is a distributed statistics processing service written in Rust.
+Skyhawk is a distributed service for ingesting and aggregating NBA-style game statistics. Front nodes expose the HTTP API and keep recent events in memory, Kafka transports events, back nodes persist them in PostgreSQL, and Nginx balances requests across front nodes.
 
-It ingests NBA-like game log events, processes them through Kafka,
-stores them in PostgreSQL, and serves aggregated statistics through a
-REST API.
+## Architecture
 
-The system is designed as a scalable microservice architecture with
-stateless API nodes, stream processing via Kafka, and persistent
-storage.
+```text
+client -> Nginx -> front nodes -> Kafka (main) -> back nodes -> PostgreSQL
+                    ^                    |
+                    +-- Kafka (removal) -+
+```
 
-------------------------------------------------------------------------
+- `front`: validates `POST /log`, publishes events, maintains a synchronized in-memory cache, and serves `POST /stat`.
+- `back`: consumes Kafka events in batches, persists them transactionally, and publishes cache-removal markers.
+- `PostgreSQL`: stores historical events and front-node discovery heartbeats.
+- `Kafka`: uses the `main` and `removal` topics.
 
-## Architecture Overview
+Statistics combine persisted rows with in-memory events that have not yet been removed. Active front nodes exchange their current season cache through the internal `/stat-copy` endpoint.
 
-The system is composed of several services running in containers:
+## Run with Docker
 
-                 +-------------+
-                 |  Load Balancer |
-                 +-------+-----+
-                         |
-               +---------+---------+
-               |                   |
-            +--v---+           +---v--+
-            | Front |  ...     | Front |
-            +--+---+           +---+--+
-               |                   |
-               +---------+---------+
-                         |
-                       Kafka
-                         |
-                   +-----+-----+
-                   |           |
-                +--v--+    +---v---+
-                | Back |    | Back |
-                +--+---+    +---+--+
-                   |
-                PostgreSQL
+Requirements: Docker with Compose support.
 
-------------------------------------------------------------------------
+```bash
+docker compose up --build -d
+```
 
-## Components
+The public API is available at `http://localhost:8080`. Stop the stack with:
 
-### Front Service
+```bash
+docker compose down
+```
 
-Responsible for:
-
--   Accepting incoming API requests
--   Validating payloads
--   Writing log records to Kafka
--   Maintaining an in‑memory cache of recent records
--   Serving statistics requests
-
-Each front instance:
-
--   produces messages to Kafka
--   consumes the same Kafka topic to stay in sync with other instances
-
-Implementation: `src/bin/front.rs`
-
-------------------------------------------------------------------------
-
-### Back Service
-
-Responsible for:
-
--   Consuming log events from Kafka
--   Persisting them into PostgreSQL
--   Publishing cleanup signals to Kafka once records are stored
-
-Implementation: `src/bin/back.rs`
-
-------------------------------------------------------------------------
-
-### Kafka
-
-Kafka acts as the main event streaming backbone of the system.
-
-Two topics are used:
-
-**main**\
-Contains all incoming log events.
-
-**removal**\
-Contains markers indicating which events have already been persisted and
-can be removed from front-node memory.
-
-------------------------------------------------------------------------
-
-### PostgreSQL
-
-Stores all historical statistics data.
-
-Database schema is created via SQL migrations located in:
-
-    migrations/
-
-------------------------------------------------------------------------
-
-### Load Balancer
-
-An Nginx container distributes requests across multiple Front nodes.
-
-Configuration:
-
-    lb/nginx.conf
-
-------------------------------------------------------------------------
-
-## Data Flow
-
-1.  Client sends `/log` request
-2.  Front node validates the request
-3.  Front node generates a unique timestamp pair
-4.  Event is published to **Kafka main topic**
-5.  All Front nodes consume the event and store it in memory
-6.  Back nodes consume events and persist them into PostgreSQL
-7.  Back nodes publish a marker to **Kafka removal topic**
-8.  Front nodes receive the marker and remove old events from memory
-
-This ensures:
-
--   consistency across front nodes
--   idempotent processing
--   safe recovery after failures
-
-------------------------------------------------------------------------
-
-## Running the System
-
-The easiest way to run the full stack is with Docker.
-
-    docker-compose up -d
-
-This starts:
-
--   PostgreSQL
--   Zookeeper
--   Kafka
--   Front service
--   Back service
--   Nginx load balancer
-
-The API will be available at:
-
-    http://localhost:8080
-
-------------------------------------------------------------------------
+Add `-v` only if you also want to delete the PostgreSQL volume.
 
 ## API
 
-### POST /log
+### `POST /log`
 
-Registers a game log event.
+At least one numeric statistic must be present. `season`, `team`, and `player` are trimmed and normalized to uppercase. Numeric values must not be negative; zero values are accepted but do not count as the required statistic on their own.
 
-Example request:
-
-``` json
+```json
 {
   "season": "season3",
   "team": "team3",
@@ -168,132 +51,76 @@ Example request:
 }
 ```
 
-Fields include:
+Supported statistics: `points`, `rebounds`, `assists`, `steals`, `blocks`, `fouls`, `turnovers`, and `minutesPlayed`.
 
--   season
--   team
--   player
--   points
--   rebounds
--   assists
--   steals
--   blocks
--   fouls
--   turnovers
--   minutesPlayed
+Success response: `202 Accepted`.
 
-Only `season`, `team`, and `player` are required.
+### `POST /stat`
 
-------------------------------------------------------------------------
+`per` must be `team` or `player`. Duplicate entries in `values` are ignored, and `season` is normalized in the same way as `/log`.
 
-### POST /stat
-
-Returns aggregated statistics.
-
-Example request:
-
-``` json
+```json
 {
   "season": "season3",
   "per": "player",
-  "values": [
-    "points",
-    "rebounds",
-    "assists"
-  ]
+  "values": ["points", "rebounds", "minutesPlayed"]
 }
 ```
 
-Parameters:
-
-  Field    Description
-  -------- --------------------------------------
-  season   Season identifier
-  per      Aggregation key (`team` or `player`)
-  values   Metrics to aggregate
-
 Example response:
 
-``` json
+```json
 {
   "PLAYER1": {
-    "points": 20,
-    "rebounds": 10
-  },
-  "PLAYER2": {
-    "points": 18,
-    "rebounds": 7
+    "points": 20.0,
+    "rebounds": 10.0,
+    "minutesPlayed": 32.5
   }
 }
 ```
 
-------------------------------------------------------------------------
+`POST /stat-copy` is an internal endpoint used between front nodes and should not be exposed independently.
 
-## Technology Stack
+## Local development
 
--   Rust
--   Axum
--   Tokio
--   Kafka (rdkafka)
--   PostgreSQL
--   SQLx
--   Docker
--   Nginx
+The project uses Rust edition 2024. SQLx compile-time queries require either a reachable database through `DATABASE_URL` or the checked-in offline metadata:
 
-------------------------------------------------------------------------
+```bash
+SQLX_OFFLINE=true cargo test --all-targets
+SQLX_OFFLINE=true cargo clippy --all-targets -- -D warnings
+cargo fmt --all -- --check
+```
 
-## Project Structure
+Environment variables:
 
-    src/
-     ├ bin/
-     │  ├ front.rs
-     │  └ back.rs
-     ├ handlers/
-     │  ├ log.rs
-     │  ├ stat.rs
-     │  └ copy.rs
-     ├ domain.rs
-     ├ service_discovery.rs
-     ├ runtime_store.rs
-     └ utils.rs
+| Variable | Used by | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | front, back | PostgreSQL connection string |
+| `KAFKA_TOPIC_MAIN` | front, back | Incoming-event topic |
+| `KAFKA_TOPIC_REMOVAL` | front, back | Cache-removal topic |
+| `KAFKA_GROUP_ID` | front, back | Consumer group; `random` generates a UUID |
+| `KAFKA_BOOTSTRAP_SERVERS` | front, back | Kafka broker list |
+| `SERVICE_DISCOVERY_SELF_URL` | front | Optional advertised URL; `docker.host` resolves from `HOSTNAME` |
 
-    migrations/
-    front/
-    back/
-    lb/
-    docker-compose.yaml
+Database migrations run automatically when either binary starts and are stored in `migrations/`.
 
-------------------------------------------------------------------------
+## Project layout
 
-## Design Characteristics
+```text
+src/
+├── bin/                 thin front and back entry points
+├── api/                 HTTP handlers and HTTP error mapping
+├── domain/              request, response, and event models
+├── services/            statistics use case and front synchronization
+├── storage/             PostgreSQL access and in-memory runtime store
+├── kafka/               front consumer and back persistence worker
+├── config.rs            environment configuration
+├── state.rs             Axum application state
+├── discovery.rs         front-node discovery
+├── shutdown.rs          task supervision and graceful shutdown
+└── error.rs             shared infrastructure errors
+migrations/              PostgreSQL schema
+front/, back/, lb/        container definitions
+```
 
-Skyhawk focuses on:
-
--   horizontal scalability
--   event-driven architecture
--   idempotent data processing
--   fault tolerance
--   low-latency statistics queries
-
-The combination of **Kafka + in-memory caching + persistent storage**
-allows the system to handle high write throughput while still providing
-fast query responses.
-
-------------------------------------------------------------------------
-
-## Development
-
-Build the project:
-
-    cargo build
-
-Run services locally:
-
-    cargo run --bin front
-    cargo run --bin back
-
-------------------------------------------------------------------------
-
-## License
-
-MIT
+The dependency flow is `api -> services -> storage/domain`. The binaries assemble dependencies and start workers; business logic does not live in the entry points.

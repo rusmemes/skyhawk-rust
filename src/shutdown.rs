@@ -1,6 +1,6 @@
-use crate::errors::AppError;
+use crate::error::AppError;
 use futures::future::select_all;
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
@@ -25,7 +25,12 @@ pub async fn join_tasks(token: CancellationToken, mut handles: Vec<JoinHandle<Re
         handles = remaining;
 
         match res {
-            Ok(_) => {}
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                tracing::error!(%error, "Background task failed");
+                token.cancel();
+                break;
+            }
             Err(e) if e.is_panic() => {
                 // that is really unexpected as there are no places in the app where the code can panic intentionally
                 tracing::error!("Background task panicked: {e}");
@@ -38,5 +43,41 @@ pub async fn join_tasks(token: CancellationToken, mut handles: Vec<JoinHandle<Re
                 break;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn successful_tasks_do_not_cancel_token() {
+        let token = CancellationToken::new();
+        join_tasks(token.clone(), vec![tokio::spawn(async { Ok(()) })]).await;
+        assert!(!token.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn failed_task_cancels_token() {
+        let token = CancellationToken::new();
+        join_tasks(
+            token.clone(),
+            vec![tokio::spawn(async {
+                Err(AppError::Custom("failure".into()))
+            })],
+        )
+        .await;
+        assert!(token.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn panicked_task_cancels_token() {
+        let token = CancellationToken::new();
+        join_tasks(
+            token.clone(),
+            vec![tokio::spawn(async { panic!("failure") })],
+        )
+        .await;
+        assert!(token.is_cancelled());
     }
 }

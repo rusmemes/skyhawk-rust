@@ -1,3 +1,4 @@
+use super::StatValue;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgRow;
 use sqlx::{FromRow, Row};
@@ -55,7 +56,6 @@ impl TimeKey {
 
 impl<'r> FromRow<'r, PgRow> for CacheRecord {
     fn from_row(row: &'r PgRow) -> Result<Self, sqlx::Error> {
-
         let t1: i64 = row.try_get("t1")?;
         let t2: i64 = row.try_get("t2")?;
 
@@ -65,56 +65,62 @@ impl<'r> FromRow<'r, PgRow> for CacheRecord {
                 season: row.try_get("season")?,
                 team: row.try_get("team")?,
                 player: row.try_get("player")?,
-                points: row.try_get(StatValue::Points.to_db_column_name()).ok(),
-                rebounds: row.try_get(StatValue::Rebounds.to_db_column_name()).ok(),
-                assists: row.try_get(StatValue::Assists.to_db_column_name()).ok(),
-                steals: row.try_get(StatValue::Steals.to_db_column_name()).ok(),
-                blocks: row.try_get(StatValue::Blocks.to_db_column_name()).ok(),
-                fouls: row.try_get(StatValue::Fouls.to_db_column_name()).ok(),
-                turnovers: row.try_get(StatValue::Turnovers.to_db_column_name()).ok(),
-                minutes_played: row.try_get(StatValue::MinutesPlayed.to_db_column_name()).ok(),
+                points: row.try_get(StatValue::Points.database_column()).ok(),
+                rebounds: row.try_get(StatValue::Rebounds.database_column()).ok(),
+                assists: row.try_get(StatValue::Assists.database_column()).ok(),
+                steals: row.try_get(StatValue::Steals.database_column()).ok(),
+                blocks: row.try_get(StatValue::Blocks.database_column()).ok(),
+                fouls: row.try_get(StatValue::Fouls.database_column()).ok(),
+                turnovers: row.try_get(StatValue::Turnovers.database_column()).ok(),
+                minutes_played: row.try_get(StatValue::MinutesPlayed.database_column()).ok(),
             },
         })
     }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum StatPer {
-    Team, Player
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[derive(Serialize, Deserialize, Eq, PartialEq, Hash)]
-#[serde(rename_all = "camelCase")]
-pub enum StatValue {
-    Points,
-    Rebounds,
-    Assists,
-    Steals,
-    Blocks,
-    Fouls,
-    Turnovers,
-    MinutesPlayed,
-}
-
-impl StatValue {
-    pub fn to_db_column_name(&self) -> &'static str {
-        match self {
-            StatValue::Points => "points",
-            StatValue::Rebounds => "rebounds",
-            StatValue::Assists => "assists",
-            StatValue::Steals => "steals",
-            StatValue::Blocks => "blocks",
-            StatValue::Fouls => "fouls",
-            StatValue::Turnovers => "turnovers",
-            StatValue::MinutesPlayed => "minutes_played",
+    fn log() -> Log {
+        Log {
+            season: "S1".into(),
+            team: "TEAM".into(),
+            player: "PLAYER".into(),
+            points: Some(12),
+            rebounds: None,
+            assists: None,
+            steals: None,
+            blocks: None,
+            fouls: None,
+            turnovers: None,
+            minutes_played: Some(20.5),
         }
     }
-}
 
-#[derive(Deserialize)]
-pub struct StatRequest {
-    pub season: String,
-    pub per: StatPer,
-    pub values: Vec<StatValue>,
+    #[test]
+    fn log_uses_camel_case_minutes_and_omits_missing_values() {
+        let json = serde_json::to_value(log()).unwrap();
+
+        assert_eq!(json["minutes_played"], 20.5);
+        assert!(json.get("rebounds").is_none());
+    }
+
+    #[test]
+    fn log_accepts_camel_case_minutes_alias() {
+        let log: Log =
+            serde_json::from_str(r#"{"season":"S1","team":"T","player":"P","minutesPlayed":8.5}"#)
+                .unwrap();
+
+        assert_eq!(log.minutes_played, Some(8.5));
+    }
+
+    #[test]
+    fn cache_record_generates_orderable_nonzero_time_key() {
+        let first = CacheRecord::new(log());
+        let second = CacheRecord::new(log());
+
+        assert!(first.time_key.0 > 0);
+        assert!(first.time_key <= second.time_key);
+    }
 }

@@ -95,30 +95,84 @@ impl RuntimeStore {
     }
 }
 
+impl Default for RuntimeStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
-mod test {
-    use crate::domain::{CacheRecord, Log};
-    use crate::runtime_store::RuntimeStore;
+mod tests {
+    use super::RuntimeStore;
+    use crate::domain::{CacheRecord, Log, TimeKey};
+
+    fn record(season: &str, team: &str, player: &str, time: i64) -> CacheRecord {
+        CacheRecord {
+            time_key: TimeKey(time, time),
+            log: Log {
+                season: season.into(),
+                team: team.into(),
+                player: player.into(),
+                steals: Some(1),
+                points: None,
+                rebounds: None,
+                assists: None,
+                blocks: None,
+                fouls: None,
+                turnovers: None,
+                minutes_played: None,
+            },
+        }
+    }
 
     #[test]
-    fn test() {
+    fn stores_and_reads_records_for_requested_season_only() {
         let store = RuntimeStore::new();
-        store.log(CacheRecord::new(Log {
-            season: "season".to_string(),
-            team: "team".to_string(),
-            player: "player".to_string(),
-            steals: Some(1),
-            points: None,
-            rebounds: None,
-            assists: None,
-            blocks: None,
-            fouls: None,
-            turnovers: None,
-            minutes_played: None,
-        }));
+        store.log(record("S1", "T", "P", 1));
+        store.log(record("S2", "T", "P", 2));
 
-        let vec = store.view("season");
-        println!("{:?}", vec);
-        assert_eq!(vec.len(), 1);
+        assert_eq!(store.view("S1").len(), 1);
+        assert_eq!(store.view("S2").len(), 1);
+        assert!(store.view("UNKNOWN").is_empty());
+    }
+
+    #[test]
+    fn same_time_key_replaces_existing_record() {
+        let store = RuntimeStore::new();
+        store.log(record("S", "T", "P", 1));
+        store.log(record("S", "T", "P", 1));
+
+        assert_eq!(store.view("S").len(), 1);
+    }
+
+    #[test]
+    fn removal_marker_removes_only_records_up_to_marker_for_same_player() {
+        let store = RuntimeStore::new();
+        store.log(record("S", "T", "P", 1));
+        store.log(record("S", "T", "P", 2));
+        store.log(record("S", "T", "P", 3));
+        store.log(record("S", "T", "OTHER", 1));
+
+        store.remove(&record("S", "T", "P", 2));
+
+        let view = store.view("S");
+        assert_eq!(view.len(), 2);
+        assert!(
+            view.iter()
+                .any(|record| record.log.player == "P" && record.time_key.0 == 3)
+        );
+        assert!(view.iter().any(|record| record.log.player == "OTHER"));
+    }
+
+    #[test]
+    fn removing_unknown_path_is_a_noop() {
+        let store = RuntimeStore::new();
+        store.log(record("S", "T", "P", 1));
+
+        store.remove(&record("UNKNOWN", "T", "P", 5));
+        store.remove(&record("S", "UNKNOWN", "P", 5));
+        store.remove(&record("S", "T", "UNKNOWN", 5));
+
+        assert_eq!(store.view("S").len(), 1);
     }
 }

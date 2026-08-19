@@ -1,9 +1,9 @@
 use crate::domain::{CacheRecord, Log};
-use crate::runtime_store::RuntimeStore;
+use crate::storage::runtime::RuntimeStore;
 use crate::{Config, HEADER_SENDER};
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 use rdkafka::message::{Header, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::sync::Arc;
@@ -99,7 +99,7 @@ impl Log {
 
     fn check_string(s: &str, errors: &mut Vec<String>, label: &str) {
         if s.is_empty() || s.chars().all(char::is_whitespace) {
-            errors.push(String::from(format!("{} value is not correct", label)))
+            errors.push(format!("{} value is not correct", label))
         }
     }
 
@@ -111,11 +111,77 @@ impl Log {
             if value > T::default() {
                 *empty = false;
             } else if value < T::default() {
-                errors.push(String::from(format!(
-                    "{} value must a positive value",
-                    label
-                )))
+                errors.push(format!("{} value must be a positive value", label))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_log() -> Log {
+        Log {
+            season: " season ".into(),
+            team: " team ".into(),
+            player: " player ".into(),
+            points: Some(1),
+            rebounds: None,
+            assists: None,
+            steals: None,
+            blocks: None,
+            fouls: None,
+            turnovers: None,
+            minutes_played: None,
+        }
+    }
+
+    #[test]
+    fn accepts_complete_log_with_positive_value() {
+        assert!(valid_log().validate().is_empty());
+    }
+
+    #[test]
+    fn rejects_blank_required_fields() {
+        let mut log = valid_log();
+        log.season = "  ".into();
+        log.team.clear();
+
+        let errors = log.validate();
+
+        assert!(errors.iter().any(|error| error.contains("Season")));
+        assert!(errors.iter().any(|error| error.contains("Team")));
+    }
+
+    #[test]
+    fn rejects_negative_values() {
+        let mut log = valid_log();
+        log.points = Some(-1);
+
+        let errors = log.validate();
+
+        assert!(errors.iter().any(|error| error.contains("positive")));
+        assert!(errors.iter().any(|error| error.contains("no values")));
+    }
+
+    #[test]
+    fn requires_at_least_one_positive_statistic() {
+        let mut log = valid_log();
+        log.points = Some(0);
+
+        assert_eq!(log.validate(), ["The Request contains no values"]);
+    }
+
+    #[test]
+    fn kafka_key_contains_normalized_identity() {
+        let log = Log {
+            season: "S1".into(),
+            team: "TEAM".into(),
+            player: "PLAYER".into(),
+            ..valid_log()
+        };
+
+        assert_eq!(log.kafka_key(), "log-S1-TEAM-PLAYER");
     }
 }
