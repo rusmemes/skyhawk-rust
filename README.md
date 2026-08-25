@@ -6,8 +6,8 @@ Skyhawk is a distributed service for ingesting and aggregating NBA-style game st
 
 ```text
 client -> Nginx -> front nodes -> Kafka (main) -> back nodes -> PostgreSQL
-                    ^                    |
-                    +-- Kafka (removal) -+
+                        ^                              |
+                        +------ Kafka (removal) -------+
 ```
 
 - `front`: validates `POST /log`, publishes events, maintains a synchronized in-memory cache, and serves `POST /stat`.
